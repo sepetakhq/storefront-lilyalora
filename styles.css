@@ -1,0 +1,80 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #FFFDF7;
+  color: #43382E;
+  font-family: 'Karla', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+* { box-sizing: border-box; }
+a { color: #B4557A; text-decoration: none; }
+a:hover { color: #D26E8E; }
+button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+input, select, textarea { font-family: inherit; color: #43382E; }
+input:focus, select:focus, textarea:focus { outline: 2px solid #F3B8C8; outline-offset: 1px; }
+
+@keyframes floaty {
+  0%   { transform: translateY(0); }
+  50%  { transform: translateY(-10px); }
+  100% { transform: translateY(0); }
+}
+
+/* --- hover states (ported from the design's style-hover attributes) --- */
+.hv-pink:hover    { color: #D26E8E; }
+.hv-gray:hover    { color: #8A7D70; }
+.hv-blush:hover   { color: #F3B8C8; }
+.hv-primary:hover { background: #C05C7E; color: #fff; }
+.hv-cart:hover    { background: #EFA6BB; }
+.hv-dark:hover    { background: #5A4C3F; }
+.hv-butter:hover  { background: #EFD98F; }
+.hv-cream:hover   { background: #FDF6E3; }
+.hv-bd-pink:hover { border-color: #D26E8E; }
+
+.hv-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 14px 30px rgba(67, 56, 46, 0.12);
+}
+.hv-card-pink:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 14px 30px rgba(210, 110, 142, 0.16);
+}
+.hv-shadow:hover { box-shadow: 0 14px 30px rgba(67, 56, 46, 0.12); }
+
+/* --- loading shimmer -----------------------------------------------------
+   Woven from the same cream-to-blush the photography sits on, so a loading
+   grid reads as the storefront rather than as a generic skeleton screen. */
+.la-shimmer {
+  background: linear-gradient(100deg, #FBF3E4 0%, #FDF0F4 40%, #FBF3E4 80%);
+  background-size: 220% 100%;
+  animation: la-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes la-shimmer {
+  0%   { background-position: 130% 0; }
+  100% { background-position: -30% 0; }
+}
+
+/* Motion is decoration here; anyone who has asked for less should get a
+   still placeholder rather than a pulsing one. */
+@media (prefers-reduced-motion: reduce) {
+  .la-shimmer { animation: none; }
+  .hv-card:hover, .hv-card-pink:hover { transform: none; }
+}
+
+/* --- product grid --------------------------------------------------------
+   Two across on phones, which is how buyers scan a clothing collection —
+   one product per screen turns an eight-piece catalogue into eight swipes.
+   The breakpoint matches the `sizes` attribute on the cards exactly
+   (50vw below 560px, ~33vw to 900px, then a fixed column), so the browser
+   picks the variant it actually needs instead of guessing against a layout
+   that disagrees with it. */
+.product-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+@media (min-width: 560px) {
+  .product-grid {
+    gap: 18px;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  }
+}

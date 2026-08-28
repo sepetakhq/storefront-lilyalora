@@ -1,0 +1,79 @@
+import { createContext, useContext, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+
+import { getConfig } from '../api/endpoints.js';
+import { qk } from '../api/queryKeys.js';
+import { fmt, interpolate } from '../shared/format.js';
+
+const ConfigContext = createContext(null);
+
+// Brand copy, nav, couriers and payment methods all come from the tenant. The
+// whole shell depends on them, so the app waits for this one request rather
+// than rendering a header with placeholder text and then swapping it.
+export function ConfigProvider({ children, fallback, errorFallback }) {
+  const query = useQuery({
+    queryKey: qk.config,
+    queryFn: ({ signal }) => getConfig(signal),
+    // Brand identity does not change mid-visit.
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+
+  const value = useMemo(() => (query.data ? shape(query.data) : null), [query.data]);
+
+  if (query.isPending) return fallback ?? null;
+  if (query.isError || !value) return errorFallback?.(query.error, query.refetch) ?? null;
+
+  return <ConfigContext.Provider value={value}>{children}</ConfigContext.Provider>;
+}
+
+export function useConfig() {
+  const ctx = useContext(ConfigContext);
+  if (!ctx) throw new Error('useConfig must be used inside ConfigProvider');
+  return ctx;
+}
+
+// The API's nav entries name the prototype's screens, not URLs.
+const ROUTE_PATHS = {
+  home: '/',
+  catalog: '/katalog',
+  track: '/lacak',
+  about: '/tentang',
+};
+
+function shape(raw) {
+  const commerce = raw.commerce ?? {};
+  const brand = raw.brand ?? {};
+  const freeShippingMin = commerce.free_shipping_min ?? 0;
+
+  // Every slice on brand comes from JSONB and arrives as null, not [], when
+  // the tenant has not set it.
+  const nav = (brand.nav ?? [])
+    .map((n) => ({ ...n, path: ROUTE_PATHS[n.route] }))
+    .filter((n) => n.path);
+
+  // Brand copy ships with literal {free_shipping_min} placeholders.
+  const values = { free_shipping_min: fmt(freeShippingMin) };
+  const copy = (s) => interpolate(s, values);
+
+  return {
+    tenant: raw.tenant ?? {},
+    contactChannel: raw.contact?.channel || 'email',
+    payment: raw.payment ?? {},
+    freeShippingMin,
+    freeShippingMinLabel: values.free_shipping_min,
+    couriers: commerce.couriers ?? [],
+    paymentMethods: commerce.payment_methods ?? [],
+    brand: {
+      ...brand,
+      nav,
+      heroStats: (brand.hero_stats ?? []).map((s) => ({ ...s, label: copy(s.label) })),
+      heroImages: brand.hero_images ?? [],
+      sections: brand.section_copy ?? {},
+      tagline: copy(brand.tagline),
+      productCareCopy: copy(brand.product_care_copy),
+      productShippingCopy: copy(brand.product_shipping_copy),
+    },
+    copy,
+  };
+}

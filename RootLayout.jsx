@@ -1,0 +1,135 @@
+import { useCallback, useEffect, useState } from 'react';
+import { Link, Outlet, ScrollRestoration, useLocation } from 'react-router-dom';
+
+import Header from './components/Header.jsx';
+import Footer from './components/Footer.jsx';
+import Toast from './components/Toast.jsx';
+import { ConfigProvider } from './config/ConfigProvider.jsx';
+import { CartProvider } from './cart/CartProvider.jsx';
+import { ToastProvider } from './ui/ToastProvider.jsx';
+import { useHome } from './hooks/queries.js';
+import { ErrorState } from './ui/states.jsx';
+
+const MOBILE_MAX = 820;
+
+export default function RootLayout() {
+  return (
+    <ConfigProvider fallback={<Splash />} errorFallback={(error, retry) => <StoreUnavailable error={error} onRetry={retry} />}>
+      <CartProvider>
+        <ToastProvider>
+          <Shell />
+        </ToastProvider>
+      </CartProvider>
+    </ConfigProvider>
+  );
+}
+
+function Shell() {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const isMobile = useIsMobile();
+  const location = useLocation();
+
+  // Close the drawer on navigation; leaving it open over a new screen is the
+  // classic mobile-nav bug.
+  useEffect(() => setMenuOpen(false), [location.pathname]);
+
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <ScrollRestoration />
+      <Announcement />
+      <Header
+        isMobile={isMobile}
+        menuOpen={menuOpen && isMobile}
+        onToggleMenu={() => setMenuOpen((o) => !o)}
+        onNavigate={() => setMenuOpen(false)}
+      />
+      <Outlet />
+      <Footer />
+      <Toast />
+    </div>
+  );
+}
+
+/**
+ * The promo strip. It comes from the same payload as the home sections, so it
+ * is simply absent until that query resolves rather than flashing in.
+ */
+function Announcement() {
+  const { data } = useHome();
+  const announcement = data?.announcement;
+  if (!announcement?.enabled || !announcement.text) return null;
+
+  return (
+    <Link
+      to="/katalog"
+      style={{
+        background: 'linear-gradient(90deg,#F3B8C8,#F5E6AE)',
+        color: '#6E4634',
+        fontSize: 13,
+        fontWeight: 700,
+        letterSpacing: '0.08em',
+        textTransform: 'uppercase',
+        display: 'block',
+        width: '100%',
+        padding: '8px 16px',
+        textAlign: 'center',
+      }}
+    >
+      {announcement.text}
+    </Link>
+  );
+}
+
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < MOBILE_MAX);
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < MOBILE_MAX);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  return isMobile;
+}
+
+/** Shown while the tenant's brand identity loads — the whole shell depends on it. */
+function Splash() {
+  return (
+    <div
+      style={{
+        minHeight: '100vh',
+        display: 'grid',
+        placeItems: 'center',
+        background: '#FFFDF7',
+      }}
+    >
+      <span
+        style={{
+          fontFamily: "'Cormorant Garamond',serif",
+          fontStyle: 'italic',
+          fontSize: 30,
+          color: '#E0CDB4',
+        }}
+      >
+        Lily Alora
+      </span>
+    </div>
+  );
+}
+
+/**
+ * The tenant could not be resolved: an unknown host (404) or a suspended store
+ * (503). Both are real, and neither should render as a broken page.
+ */
+function StoreUnavailable({ error, onRetry }) {
+  const suspended = error?.status === 503;
+  return (
+    <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#FFFDF7' }}>
+      <ErrorState
+        error={error}
+        title={suspended ? 'Toko sedang tidak aktif' : 'Toko tidak ditemukan'}
+        onRetry={suspended ? onRetry : undefined}
+      />
+    </div>
+  );
+}
+
+export { useIsMobile };

@@ -1,0 +1,641 @@
+import { useEffect, useMemo, useState } from 'react';
+import { Navigate, useNavigate } from 'react-router-dom';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+
+import { Img, SIZES } from '../ui/Img.jsx';
+import OtpModal from '../components/OtpModal.jsx';
+import { useCart } from '../cart/CartProvider.jsx';
+import { useCartLines } from '../cart/useCartLines.js';
+import { useConfig } from '../config/ConfigProvider.jsx';
+import { createDraft, sendCheckoutCode, verifyCheckoutCode } from '../api/endpoints.js';
+import { qk } from '../api/queryKeys.js';
+import { fmt } from '../shared/format.js';
+import { contactField, normalizeContact, validateContact } from '../lib/contact.js';
+import { clearCheckout, keyForAttempt, resetKeyForAttempt, saveCheckout } from '../checkout/checkoutStorage.js';
+import { recordRetryAfter, recordSend, clearCooldown } from '../checkout/otpCooldown.js';
+import { rememberOrder } from '../checkout/orderTokens.js';
+import { CountdownClock } from '../ui/Countdown.jsx';
+
+const card = { background: '#fff', border: '1px solid #F0E4CF', borderRadius: 22, padding: 22 };
+const cardTitle = { fontWeight: 700, fontSize: 16, marginBottom: 14 };
+const field = {
+  border: '1px solid #F0E4CF',
+  borderRadius: 12,
+  padding: '12px 14px',
+  fontSize: 14.5,
+  background: '#FFFDF7',
+  width: '100%',
+};
+
+// Server-side caps, counted in runes. Enforced here so the buyer is told
+// before a round-trip, not after.
+const LIMITS = { customer_name: 120, address: 500, city: 80, contact: 254 };
+
+export default function CheckoutRoute() {
+  const cart = useCart();
+  // Placing an order empties the cart, which would otherwise trip this guard
+  // and bounce the buyer to an empty cart instead of their new order — with
+  // the order created and the tracking link only in localStorage.
+  const [placed, setPlaced] = useState(false);
+  if (cart.isEmpty && !placed) return <Navigate to="/keranjang" replace />;
+  return <Checkout onPlaced={() => setPlaced(true)} />;
+}
+
+function Checkout({ onPlaced }) {
+  const { couriers, paymentMethods, contactChannel, freeShippingMin } = useConfig();
+  const cart = useCart();
+  const { lines, subtotal, isLoading, hasBlockers } = useCartLines();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  const [form, setForm] = useState({ customer_name: '', contact: '', address: '', city: '' });
+  const [courier, setCourier] = useState(() => couriers[0]?.code ?? '');
+  const [method, setMethod] = useState(() => paymentMethods[0]?.code ?? '');
+  const [formErr, setFormErr] = useState('');
+
+  // The draft is the first server-priced view of this cart, and the review
+  // step exists so the buyer approves it before a code is spent.
+  const [draft, setDraft] = useState(null);
+  const [otp, setOtp] = useState(null);
+  // Closing the modal must not discard the challenge. The buyer still has a
+  // live code in their inbox, and re-sending would spend one of five per hour
+  // and push them onto the 60s -> 5m -> 30m ladder for no reason.
+  const [otpOpen, setOtpOpen] = useState(false);
+
+  const contactMeta = contactField(contactChannel);
+  const setField = (e) => {
+    // Clear the banner as soon as the buyer starts fixing it — leaving it up
+    // while they type reads as though the correction did not register.
+    setFormErr('');
+    setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
+  };
+
+  // Prices the cart last saw, for the change notice on the review panel.
+  const cartPrices = useMemo(() => {
+    const m = new Map();
+    for (const l of lines) if (l.product) m.set(l.product.id, l.product.price);
+    return m;
+  }, [lines]);
+
+  const draftMutation = useMutation({
+    mutationFn: () =>
+      createDraft({
+        items: cart.items.map((it) => ({ product_id: it.productId, qty: it.qty })),
+        courier_code: courier,
+        payment_method: method,
+        contact: normalizeContact(contactChannel, form.contact),
+        customer_name: form.customer_name.trim(),
+        address: form.address.trim(),
+        city: form.city.trim(),
+      }),
+    onSuccess: (d) => {
+      setFormErr('');
+      setDraft(d);
+      saveCheckout({ draftId: d.draft_id, expiresAt: d.expires_at });
+      clearCooldown(d.draft_id);
+    },
+    onError: (err) => handleDraftError(err),
+  });
+
+  const sendMutation = useMutation({
+    mutationFn: () => sendCheckoutCode(draft.draft_id),
+    onSuccess: (res) => {
+      const state = recordSend(draft.draft_id);
+      setOtpOpen(true);
+      setOtp({
+        channel: res.channel,
+        masked: res.masked,
+        expiresAt: new Date(Date.now() + res.expires_in_seconds * 1000).toISOString(),
+        nextAllowedAt: state.nextAllowedAt,
+        attempts: 0,
+        error: '',
+      });
+    },
+    onError: (err) => handleSendError(err),
+  });
+
+  const verifyMutation = useMutation({
+    mutationFn: async (code) => {
+      const key = keyForAttempt(draft.draft_id, code);
+      try {
+        return await verifyCheckoutCode(draft.draft_id, code, key);
+      } catch (err) {
+        // A reused key with a different body is our bug, not the buyer's.
+        // Mint a fresh one and try once more, transparently.
+        if (err?.status === 422) {
+          return verifyCheckoutCode(draft.draft_id, code, resetKeyForAttempt(draft.draft_id, code));
+        }
+        throw err;
+      }
+    },
+    onSuccess: ({ data }) => {
+      // Before navigating, before setState, before anything that can throw:
+      // the track token is returned exactly once and no endpoint can give it
+      // back — not tracking, not the OTP lookup.
+      const saved = rememberOrder({
+        token: data.track_token,
+        number: data.order.number,
+        total: data.order.total,
+        placedAt: data.order.placed_at,
+      });
+
+      queryClient.setQueryData(qk.track(data.track_token), {
+        order: data.order,
+        payment: data.payment ?? null,
+      });
+
+      // Order matters: release the empty-cart guard before emptying the cart,
+      // then navigate. All three are batched into one render.
+      onPlaced();
+      clearCheckout();
+      clearCooldown(draft.draft_id);
+      cart.clear();
+      setOtp(null);
+      setOtpOpen(false);
+
+      navigate(`/pesanan/${data.track_token}`, {
+        replace: true,
+        state: { justPlaced: true, tokenAtRisk: !saved },
+      });
+    },
+    onError: (err) => handleVerifyError(err),
+  });
+
+  function handleDraftError(err) {
+    if (err?.status === 409 && err.code === 'unavailable') {
+      // The API drops the per-item detail, so the cart refetches and lets the
+      // per-line hydration surface which product is the problem.
+      queryClient.invalidateQueries({ queryKey: ['product'] });
+      navigate('/keranjang', { state: { stockChanged: true } });
+      return;
+    }
+    setFormErr(err?.message || 'Checkout gagal. Coba lagi.');
+  }
+
+  function handleSendError(err) {
+    if (err?.code === 'draft_expired') return resetDraft('Checkout kedaluwarsa. Ulangi ya.');
+    if (err?.code === 'draft_consumed' || err?.code === 'order_exists') {
+      return setFormErr('Pesanan ini sudah dibuat. Cek email konfirmasimu atau buka Lacak Pesanan.');
+    }
+    if (err?.status === 409 && err.code === 'unavailable') return handleDraftError(err);
+    if (err?.status === 429) {
+      if (err.retryAfter) recordRetryAfter(draft.draft_id, err.retryAfter);
+      setFormErr(err.message);
+      return;
+    }
+    setFormErr(err?.message || 'Gagal mengirim kode.');
+  }
+
+  function handleVerifyError(err) {
+    // Wrong code, expired code, too many attempts and a code bound to another
+    // draft are one indistinguishable 400 by design — so the UI must not
+    // promise a reason.
+    if (err?.status === 400) {
+      setOtp((o) => o && { ...o, error: err.message, attempts: o.attempts + 1 });
+      return;
+    }
+    if (err?.status === 409 && err.code === 'unavailable') {
+      // The OTP was consumed before the stock check, so a retry is useless —
+      // this needs a new draft and a new code.
+      setOtp(null);
+      setOtpOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['product'] });
+      navigate('/keranjang', { state: { stockChanged: true, afterVerify: true } });
+      return;
+    }
+    if (err?.code === 'order_exists' || err?.code === 'draft_consumed') {
+      setOtp(null);
+      setOtpOpen(false);
+      setFormErr('Pesanan ini sudah dibuat. Cek email konfirmasimu atau buka Lacak Pesanan.');
+      return;
+    }
+    setOtp((o) => o && { ...o, error: err?.message || 'Verifikasi gagal. Coba lagi.' });
+  }
+
+  function resetDraft(message) {
+    setDraft(null);
+    setOtp(null);
+    setOtpOpen(false);
+    clearCheckout();
+    setFormErr(message);
+  }
+
+  function submitForm(e) {
+    e.preventDefault();
+    for (const [key, max] of Object.entries(LIMITS)) {
+      if ([...(form[key] || '')].length > max) {
+        return setFormErr(`${LABELS[key]} terlalu panjang (maksimal ${max} karakter).`);
+      }
+    }
+    if (!form.customer_name.trim() || !form.address.trim() || !form.city.trim()) {
+      return setFormErr('Lengkapi nama, alamat, dan kota dulu ya.');
+    }
+    const contactErr = validateContact(contactChannel, form.contact);
+    if (contactErr) return setFormErr(contactErr);
+
+    setFormErr('');
+    draftMutation.mutate();
+  }
+
+  if (draft) {
+    return (
+      <Review
+        draft={draft}
+        cartPrices={cartPrices}
+        courier={couriers.find((c) => c.code === courier)}
+        method={paymentMethods.find((m) => m.code === method)}
+        error={formErr}
+        otp={otp}
+        otpOpen={otpOpen}
+        sending={sendMutation.isPending}
+        verifying={verifyMutation.isPending}
+        onSend={() => {
+          setFormErr('');
+          sendMutation.mutate();
+        }}
+        onReopenOtp={() => {
+          setFormErr('');
+          setOtpOpen(true);
+        }}
+        onVerify={(code) => verifyMutation.mutate(code)}
+        onCancelOtp={() => setOtpOpen(false)}
+        onEdit={() => resetDraft('')}
+        onExpire={() => resetDraft('Checkout kedaluwarsa. Ulangi ya.')}
+      />
+    );
+  }
+
+  const estShipping = estimateShipping(subtotal, freeShippingMin, couriers.find((c) => c.code === courier));
+
+  return (
+    <main
+      aria-label="Checkout"
+      style={{ flex: 1, maxWidth: 1100, margin: '0 auto', padding: '36px 20px 60px', width: '100%' }}
+    >
+      <h1 style={pageTitle}>Checkout</h1>
+
+      {/* noValidate, deliberately: the browser's own constraint bubble fires
+          before onSubmit and speaks the browser's language, so an Indonesian
+          storefront was showing "Please include an '@' in the email address".
+          type="email" is kept for the mobile keyboard; the message now comes
+          from validateContact, which mirrors the server's wording exactly. */}
+      <form
+        noValidate
+        onSubmit={submitForm}
+        style={{ display: 'flex', flexWrap: 'wrap', gap: 28, alignItems: 'flex-start' }}
+      >
+        <div style={{ flex: '1 1 480px', minWidth: 300, display: 'flex', flexDirection: 'column', gap: 22 }}>
+          <section style={card}>
+            <div style={cardTitle}>1 · Alamat pengiriman</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 12 }}>
+              <input
+                name="customer_name"
+                value={form.customer_name}
+                onChange={setField}
+                placeholder="Nama lengkap"
+                aria-label="Nama lengkap"
+                autoComplete="name"
+                maxLength={LIMITS.customer_name}
+                style={field}
+              />
+              <input
+                name="contact"
+                value={form.contact}
+                onChange={setField}
+                placeholder={contactMeta.placeholder}
+                aria-label={contactMeta.label}
+                type={contactMeta.type}
+                inputMode={contactMeta.inputMode}
+                autoComplete={contactMeta.autoComplete}
+                maxLength={LIMITS.contact}
+                style={field}
+              />
+            </div>
+            <textarea
+              name="address"
+              value={form.address}
+              onChange={setField}
+              placeholder="Alamat lengkap"
+              aria-label="Alamat lengkap"
+              autoComplete="street-address"
+              maxLength={LIMITS.address}
+              rows={3}
+              style={{ ...field, marginTop: 12, resize: 'vertical' }}
+            />
+            <input
+              name="city"
+              value={form.city}
+              onChange={setField}
+              placeholder="Kota"
+              aria-label="Kota"
+              autoComplete="address-level2"
+              maxLength={LIMITS.city}
+              style={{ ...field, marginTop: 12 }}
+            />
+            <p style={{ fontSize: 12.5, color: '#B7AA9A', margin: '10px 0 0' }}>
+              Kode verifikasi dikirim ke {contactMeta.noun} ini.
+            </p>
+          </section>
+
+          <section style={card}>
+            <div style={cardTitle}>2 · Pengiriman</div>
+            <div style={{ display: 'grid', gap: 10 }}>
+              {couriers.map((c) => (
+                <OptionTile key={c.code} selected={courier === c.code} onClick={() => setCourier(c.code)}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                    <span>
+                      <strong>{c.name}</strong>
+                      <span style={{ color: '#8A7D70', fontSize: 13 }}> · {c.eta}</span>
+                    </span>
+                    <strong>{fmt(c.cost)}</strong>
+                  </div>
+                </OptionTile>
+              ))}
+            </div>
+          </section>
+
+          <section style={card}>
+            <div style={cardTitle}>3 · Pembayaran</div>
+            <div style={{ display: 'grid', gap: 10 }}>
+              {paymentMethods.map((p) => (
+                <OptionTile key={p.code} selected={method === p.code} onClick={() => setMethod(p.code)}>
+                  <strong>{p.name}</strong>
+                  <div style={{ color: '#8A7D70', fontSize: 13 }}>{p.sub}</div>
+                </OptionTile>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        <aside style={{ ...card, flex: '1 1 300px', minWidth: 280, position: 'sticky', top: 90 }}>
+          <div style={cardTitle}>Ringkasan</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
+            {lines
+              .filter((l) => l.product)
+              .map((l) => (
+                <div key={l.item.productId} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                  <div style={{ width: 44, flexShrink: 0 }}>
+                    <Img
+                      src={l.product.image}
+                      srcSet={l.product.image_srcset}
+                      sizes={SIZES.summaryLine}
+                      alt={l.product.name}
+                      ratio="44/54"
+                      radius={8}
+                    />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0, fontSize: 13.5 }}>
+                    <div style={{ fontWeight: 600 }}>{l.product.name}</div>
+                    <div style={{ color: '#8A7D70' }}>×{l.item.qty}</div>
+                  </div>
+                  <strong style={{ fontSize: 13.5 }}>{fmt(l.lineTotal)}</strong>
+                </div>
+              ))}
+          </div>
+
+          <SummaryRow label="Subtotal" value={fmt(subtotal)} />
+          <SummaryRow label="Ongkir" value={estShipping === 0 ? 'Gratis' : fmt(estShipping)} />
+          <p style={{ fontSize: 12, color: '#B7AA9A', margin: '10px 0 0' }}>
+            Perkiraan. Total pastinya muncul di langkah berikutnya.
+          </p>
+
+          {formErr ? (
+            <div role="alert" style={errorBox}>
+              {formErr}
+            </div>
+          ) : null}
+
+          <button
+            type="submit"
+            className="hv-primary"
+            disabled={draftMutation.isPending || isLoading || hasBlockers}
+            style={{
+              ...primaryButton,
+              marginTop: 16,
+              opacity: draftMutation.isPending || isLoading || hasBlockers ? 0.6 : 1,
+            }}
+          >
+            {draftMutation.isPending ? 'Menghitung…' : 'Buat pesanan'}
+          </button>
+        </aside>
+      </form>
+    </main>
+  );
+}
+
+/**
+ * The review step. Not optional: the draft is the first time the server prices
+ * this cart, and it re-prices silently — there is no "price changed" field on
+ * the wire. The buyer approves the real total here, before an OTP is spent,
+ * and codes are capped at five per contact per hour.
+ */
+function Review({
+  draft,
+  cartPrices,
+  courier,
+  method,
+  error,
+  otp,
+  otpOpen,
+  sending,
+  verifying,
+  onSend,
+  onReopenOtp,
+  onVerify,
+  onCancelOtp,
+  onEdit,
+  onExpire,
+}) {
+  // A code already sent and still inside its five-minute window is the one the
+  // buyer should be typing, not a reason to request another.
+  const liveCode = otp && Date.parse(otp.expiresAt) > Date.now();
+  const changed = draft.lines.filter((l) => {
+    const before = cartPrices.get(l.product_id);
+    return before !== undefined && before !== l.unit_price;
+  });
+
+  return (
+    <main
+      aria-label="Konfirmasi pesanan"
+      style={{ flex: 1, maxWidth: 640, margin: '0 auto', padding: '36px 20px 60px', width: '100%' }}
+    >
+      <h1 style={pageTitle}>Konfirmasi pesanan</h1>
+
+      {changed.length > 0 ? (
+        <div
+          role="status"
+          style={{
+            background: '#FDF6E3',
+            border: '1px solid #EFD98F',
+            borderRadius: 16,
+            padding: '14px 18px',
+            marginBottom: 20,
+          }}
+        >
+          <strong style={{ fontSize: 14.5 }}>Harga diperbarui</strong>
+          <ul style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: 13.5, color: '#6E5B45' }}>
+            {changed.map((l) => (
+              <li key={l.product_id}>
+                {l.name}: {fmt(cartPrices.get(l.product_id))} → <strong>{fmt(l.unit_price)}</strong>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <section style={card}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 18 }}>
+          {draft.lines.map((l) => (
+            <div key={l.product_id} style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              <div style={{ width: 44, flexShrink: 0 }}>
+                <Img
+                  src={l.image}
+                  srcSet={l.image_srcset}
+                  sizes={SIZES.summaryLine}
+                  alt={l.name}
+                  ratio="44/54"
+                  radius={8}
+                />
+              </div>
+              <div style={{ flex: 1, minWidth: 0, fontSize: 14 }}>
+                <div style={{ fontWeight: 600 }}>{l.name}</div>
+                <div style={{ color: '#8A7D70', fontSize: 13 }}>
+                  {fmt(l.unit_price)} × {l.qty}
+                  {l.promotion_name ? (
+                    <span style={{ color: '#D26E8E' }}> · {l.promotion_name}</span>
+                  ) : null}
+                </div>
+              </div>
+              <strong style={{ fontSize: 14 }}>{fmt(l.line_total)}</strong>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ borderTop: '1px solid #F0E4CF', paddingTop: 14, display: 'grid', gap: 8 }}>
+          <SummaryRow label="Subtotal" value={fmt(draft.subtotal)} />
+          <SummaryRow
+            label={`Ongkir · ${courier?.name ?? ''}`}
+            value={draft.shipping_cost === 0 ? 'Gratis' : fmt(draft.shipping_cost)}
+          />
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 18, fontWeight: 700, marginTop: 4 }}>
+            <span>Total</span>
+            <span style={{ color: '#D26E8E' }}>{fmt(draft.total)}</span>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 16, fontSize: 13.5, color: '#8A7D70', lineHeight: 1.7 }}>
+          Bayar dengan <strong style={{ color: '#43382E' }}>{method?.name}</strong>
+          <br />
+          Kode verifikasi dikirim ke <strong style={{ color: '#43382E' }}>{draft.contact.masked}</strong>
+        </div>
+
+        <div style={{ marginTop: 10, fontSize: 12.5, color: '#B7AA9A' }}>
+          Berlaku <CountdownClock until={draft.expires_at} onExpire={onExpire} /> lagi
+        </div>
+
+        {error ? (
+          <div role="alert" style={errorBox}>
+            {error}
+          </div>
+        ) : null}
+
+        <button
+          type="button"
+          className="hv-primary"
+          onClick={liveCode ? onReopenOtp : onSend}
+          disabled={sending}
+          style={{ ...primaryButton, marginTop: 18, opacity: sending ? 0.6 : 1 }}
+        >
+          {sending ? 'Mengirim…' : liveCode ? 'Masukkan kode' : 'Kirim kode verifikasi'}
+        </button>
+        <button
+          type="button"
+          onClick={onEdit}
+          style={{ width: '100%', marginTop: 10, fontSize: 14, fontWeight: 600, color: '#8A7D70' }}
+        >
+          Ubah pesanan
+        </button>
+      </section>
+
+      {otp && otpOpen ? (
+        <OtpModal
+          otp={otp}
+          draftId={draft.draft_id}
+          verifying={verifying}
+          onVerify={onVerify}
+          onResend={onSend}
+          resending={sending}
+          onCancel={onCancelOtp}
+        />
+      ) : null}
+    </main>
+  );
+}
+
+function OptionTile({ selected, onClick, children }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={selected}
+      style={{
+        textAlign: 'left',
+        border: `2px solid ${selected ? '#D26E8E' : '#F0E4CF'}`,
+        background: selected ? '#FDF0F4' : '#FFFDF7',
+        borderRadius: 14,
+        padding: '12px 14px',
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function SummaryRow({ label, value }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14.5 }}>
+      <span style={{ color: '#8A7D70' }}>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+/** Mirrors the server's rule so the estimate does not contradict the draft. */
+function estimateShipping(subtotal, freeMin, courier) {
+  if (!courier) return 0;
+  return subtotal >= freeMin ? 0 : courier.cost;
+}
+
+const LABELS = {
+  customer_name: 'Nama',
+  address: 'Alamat',
+  city: 'Kota',
+  contact: 'Kontak',
+};
+
+const pageTitle = {
+  fontFamily: "'Cormorant Garamond',serif",
+  fontSize: 44,
+  fontWeight: 600,
+  margin: '0 0 24px',
+};
+
+const primaryButton = {
+  width: '100%',
+  background: '#D26E8E',
+  color: '#fff',
+  borderRadius: 999,
+  padding: '15px 26px',
+  fontWeight: 700,
+  fontSize: 15,
+};
+
+const errorBox = {
+  background: '#FDF0F4',
+  border: '1px solid #F3D3DE',
+  borderRadius: 12,
+  padding: '12px 14px',
+  fontSize: 13.5,
+  marginTop: 14,
+  lineHeight: 1.6,
+};
