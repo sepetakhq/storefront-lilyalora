@@ -83,12 +83,24 @@ function parseRetryAfter(res) {
  * @param {string} [options.idempotencyKey]   only checkout verify uses this
  * @param {Record<string,string>} [options.headers]
  *   Extra headers merged over the defaults. The storefront never passes any;
- *   it exists so the backoffice can attach its Authorization bearer without
- *   this module knowing anything about tokens or where they are kept.
+ *   it exists so the backoffice can attach its CSRF token without this module
+ *   knowing anything about sessions or where they are kept.
+ * @param {'omit'|'include'|'same-origin'} [options.credentials]
+ *   Defaults to 'omit', which is what the storefront wants: order access there
+ *   is a capability token in the URL, so there is nothing for a browser to
+ *   attach. The backoffice passes 'include' to send its session cookie, and
+ *   the API allows credentials on admin paths only.
  */
 export async function apiFetch(
   path,
-  { method = 'GET', body, signal, idempotencyKey, headers: extraHeaders } = {},
+  {
+    method = 'GET',
+    body,
+    signal,
+    idempotencyKey,
+    headers: extraHeaders,
+    credentials = 'omit',
+  } = {},
 ) {
   const headers = {
     Accept: 'application/json',
@@ -108,9 +120,7 @@ export async function apiFetch(
       headers,
       signal,
       body: body === undefined ? undefined : JSON.stringify(body),
-      // Never send credentials: the API refuses them by design, and asking
-      // would fail every cross-origin request silently.
-      credentials: 'omit',
+      credentials,
     });
   } catch (err) {
     // An abort is control flow, not a failure — TanStack Query needs to see it.
