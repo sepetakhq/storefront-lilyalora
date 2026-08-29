@@ -513,9 +513,30 @@ function Review({
 
         <div style={{ borderTop: '1px solid #F0E4CF', paddingTop: 14, display: 'grid', gap: 8 }}>
           <SummaryRow label="Subtotal" value={fmt(draft.subtotal)} />
+          {/*
+            Cart-scope promotions. The draft is the authority on all of this —
+            the cart screen's own estimate does not know about them and will
+            over-state, which is the safe direction for a surprise.
+          */}
+          {draft.discount_total > 0 ? (
+            <SummaryRow
+              label={draft.promotion_name ? `Diskon · ${draft.promotion_name}` : 'Diskon'}
+              value={`−${fmt(draft.discount_total)}`}
+            />
+          ) : null}
           <SummaryRow
-            label={`Ongkir · ${courier?.name ?? ''}`}
-            value={draft.shipping_cost === 0 ? 'Gratis' : fmt(draft.shipping_cost)}
+            label={
+              draft.shipping_promotion_name
+                ? `Ongkir · ${courier?.name ?? ''} · ${draft.shipping_promotion_name}`
+                : `Ongkir · ${courier?.name ?? ''}`
+            }
+            // Net, on one row: free-by-threshold and free-by-promotion are one
+            // thing to the buyer.
+            value={
+              draft.shipping_cost - draft.shipping_discount === 0
+                ? 'Gratis'
+                : fmt(draft.shipping_cost - draft.shipping_discount)
+            }
           />
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 18, fontWeight: 700, marginTop: 4 }}>
             <span>Total</span>
