@@ -111,7 +111,33 @@ export default function OrderRoute() {
         </div>
         <div style={{ borderTop: '1px solid #F0E4CF', marginTop: 16, paddingTop: 14, display: 'grid', gap: 8 }}>
           <Row label="Subtotal" value={fmt(order.subtotal)} />
-          <Row label={`Ongkir · ${order.courier_code}`} value={order.shipping_cost === 0 ? 'Gratis' : fmt(order.shipping_cost)} />
+          {/*
+            The footer has to add up, so an order placed with a cart promotion
+            shows what came off. Both rows appear only when there is something
+            to say, which for most orders is neither.
+          */}
+          {order.discount_total > 0 ? (
+            <Row
+              label={order.promotion_name ? `Diskon · ${order.promotion_name}` : 'Diskon'}
+              value={`−${fmt(order.discount_total)}`}
+            />
+          ) : null}
+          <Row
+            label={
+              order.shipping_promotion_name
+                ? `Ongkir · ${order.courier_code} · ${order.shipping_promotion_name}`
+                : `Ongkir · ${order.courier_code}`
+            }
+            // Net, on one row: the buyer does not care what the courier
+            // charges us, and free-by-threshold and free-by-promotion are the
+            // same thing to them. The promotion's name on the label is what
+            // keeps the "why".
+            value={
+              order.shipping_cost - order.shipping_discount === 0
+                ? 'Gratis'
+                : fmt(order.shipping_cost - order.shipping_discount)
+            }
+          />
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 17, fontWeight: 700 }}>
             <span>Total</span>
             <span style={{ color: '#D26E8E' }}>{fmt(order.total)}</span>

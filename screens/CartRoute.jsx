@@ -93,7 +93,7 @@ export default function CartRoute() {
         {/* The authoritative price appears once, at the draft. Saying so here
             is more honest than a total that can change at the next step. */}
         <p style={{ fontSize: 12.5, color: '#B7AA9A', margin: 0 }}>
-          Total akhir dan ongkir dihitung di langkah berikutnya.
+          Total akhir, ongkir, dan diskon dihitung di langkah berikutnya.
         </p>
 
         {hasBlockers ? (
