@@ -2,15 +2,18 @@ import { Suspense, lazy, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 
 import { Img, SIZES } from '../ui/Img.jsx';
+import QrImage from '../ui/QrImage.jsx';
 import { CountdownClock } from '../ui/Countdown.jsx';
 import { EmptyState, ErrorState, Skeleton } from '../ui/states.jsx';
 import { useOrder } from '../hooks/queries.js';
 import { useConfig } from '../config/ConfigProvider.jsx';
 import { serverNow } from '../api/client.js';
 import { fmt, fmtDateTime } from '../shared/format.js';
-import { isQrisPayload, isUsableRedirect } from '../lib/payment.js';
+import { isQrImageURL, isQrisPayload, isUsableRedirect } from '../lib/payment.js';
 import { useToast } from '../ui/ToastProvider.jsx';
 
+// QrCode is lazy because it pulls in an encoder; QrImage is not, because it
+// has nothing to pull in and deferring it would only delay the image request.
 const QrCode = lazy(() => import('../ui/QrCode.jsx'));
 
 const card = { background: '#fff', border: '1px solid #F0E4CF', borderRadius: 22, padding: 22 };
@@ -160,7 +163,11 @@ export default function OrderRoute() {
  * learns about a successful payment only by polling the order. `useOrder`
  * owns that; this component owns what the buyer does in the meantime.
  */
-function PaymentPanel({ order, payment, onRefresh }) {
+// Exported for PaymentPanel.test.jsx, which holds it to the contract that
+// every kind the backend can emit renders something a buyer can act on. That
+// seam is where a URL stored as a QR payload went unnoticed: both sides were
+// correct on their own terms and only disagreed when rendered.
+export function PaymentPanel({ order, payment, onRefresh }) {
   const { brand, payment: payConfig } = useConfig();
   const showToast = useToast();
   const [pastDeadline, setPastDeadline] = useState(
@@ -271,6 +278,8 @@ function PaymentPanel({ order, payment, onRefresh }) {
         </div>
       ) : payment.kind === 'qr' ? (
         <QrisBlock payload={payment.qr_payload} config={payConfig} brand={brand} />
+      ) : payment.kind === 'qr_image' ? (
+        <QrImageBlock url={payment.qr_image_url} config={payConfig} brand={brand} />
       ) : payment.kind === 'redirect' ? (
         <RedirectBlock url={payment.redirect_url} order={order} brand={brand} />
       ) : (
@@ -389,6 +398,68 @@ function QrisBlock({ payload, config, brand }) {
       <Suspense fallback={<Skeleton width={220} height={220} radius={16} />}>
         <QrCode payload={payload} />
       </Suspense>
+      <div style={{ fontSize: 13.5, color: '#8A7D70', lineHeight: 1.8 }}>
+        Pindai dengan aplikasi bank atau e-wallet apa pun.
+        {config.qris_merchant_name ? (
+          <>
+            <br />
+            <strong style={{ color: '#43382E' }}>{config.qris_merchant_name}</strong>
+          </>
+        ) : null}
+        {config.qris_nmid ? (
+          <>
+            <br />
+            NMID {config.qris_nmid}
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The same panel as QrisBlock, for a gateway that draws the code itself.
+ *
+ * Deliberately indistinguishable to a buyer: which provider serves a method is
+ * a routing decision that can change between one order and the next, and a
+ * payment page that visibly changed shape with it would read as a fault.
+ */
+function QrImageBlock({ url, config, brand }) {
+  if (!isQrImageURL(url)) {
+    return (
+      <div
+        style={{
+          background: '#FDF6E3',
+          border: '1px dashed #E0C98A',
+          borderRadius: 16,
+          padding: '18px 20px',
+        }}
+      >
+        <div style={{ fontWeight: 700, fontSize: 14 }}>QRIS mode uji</div>
+        <p style={{ fontSize: 13.5, color: '#6E5B45', lineHeight: 1.7, margin: '8px 0 0' }}>
+          Pembayaran QRIS belum aktif di toko ini, jadi belum ada kode yang bisa dipindai. Hubungi
+          kami untuk menyelesaikan pesanan.
+        </p>
+        {brand.whatsapp_url ? (
+          <a
+            href={brand.whatsapp_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ display: 'inline-block', marginTop: 12, color: '#B4557A', fontWeight: 700, fontSize: 13.5 }}
+          >
+            {brand.whatsapp_text || 'Hubungi kami'}
+          </a>
+        ) : null}
+        <code style={{ display: 'block', marginTop: 14, fontSize: 11, color: '#B7AA9A', wordBreak: 'break-all' }}>
+          {url}
+        </code>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap' }}>
+      <QrImage url={url} />
       <div style={{ fontSize: 13.5, color: '#8A7D70', lineHeight: 1.8 }}>
         Pindai dengan aplikasi bank atau e-wallet apa pun.
         {config.qris_merchant_name ? (
