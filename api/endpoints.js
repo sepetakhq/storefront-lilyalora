@@ -26,6 +26,27 @@ export const listProducts = (params, signal) => apiGet(`/products${qs(params)}`,
 export const getProduct = (slug, signal) =>
   apiGet(`/products/${encodeURIComponent(slug)}`, signal);
 
+/**
+ * Resolves what the buyer typed into a shippable location.
+ *
+ * The provider quotes from an opaque location id, not from an address, so the
+ * free-text city field cannot reach it: something has to turn "kemayoran" into
+ * an id first, and that is this.
+ */
+export const searchDestinations = async (q, signal) =>
+  (await apiFetch('/shipping/destinations', { method: 'POST', body: { q }, signal })).data
+    ?.results ?? [];
+
+/**
+ * Prices this cart to one destination.
+ *
+ * The options come back carrying a quote id each. That id, not a price, is
+ * what checkout submits — the server charges what it stored, so there is
+ * nothing here for a client to usefully alter.
+ */
+export const getShippingRates = async (body, signal) =>
+  (await apiFetch('/shipping/rates', { method: 'POST', body, signal })).data;
+
 export const createDraft = async (body, signal) =>
   (await apiFetch('/checkout/draft', { method: 'POST', body, signal })).data;
 

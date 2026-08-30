@@ -64,6 +64,11 @@ function shape(raw) {
     freeShippingMinLabel: values.free_shipping_min,
     couriers: commerce.couriers ?? [],
     paymentMethods: commerce.payment_methods ?? [],
+    // Which checkout to render: a courier list that already carries its
+    // prices, or a destination search followed by a live rate lookup. The
+    // server reports flat for a tenant whose live configuration is incomplete,
+    // so this is safe to branch on directly.
+    liveShipping: commerce.shipping?.mode === 'live',
     brand: {
       ...brand,
       nav,

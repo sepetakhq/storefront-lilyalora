@@ -24,6 +24,11 @@ export const qk = {
   products: (params) => ['products', normalizeProductParams(params)],
   product: (slug) => ['product', slug],
   track: (token) => ['track', token],
+  destinations: (q) => ['shipping', 'destinations', q],
+  // Keyed on the destination and the cart together: both change the answer,
+  // and a stale rate list is a price the buyer would be shown and then
+  // refused at the draft step.
+  rates: (destinationRef, cartKey) => ['shipping', 'rates', destinationRef, cartKey],
 };
 
 export { normalizeProductParams };

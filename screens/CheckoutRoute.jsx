@@ -4,6 +4,9 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { Img, SIZES } from '../ui/Img.jsx';
 import OtpModal from '../components/OtpModal.jsx';
+import DestinationPicker from '../components/DestinationPicker.jsx';
+import ShippingRates from '../components/ShippingRates.jsx';
+import { destinationSummary } from '../lib/shipping.js';
 import { useCart } from '../cart/CartProvider.jsx';
 import { useCartLines } from '../cart/useCartLines.js';
 import { useConfig } from '../config/ConfigProvider.jsx';
@@ -42,7 +45,7 @@ export default function CheckoutRoute() {
 }
 
 function Checkout({ onPlaced }) {
-  const { couriers, paymentMethods, contactChannel, freeShippingMin } = useConfig();
+  const { couriers, paymentMethods, contactChannel, freeShippingMin, liveShipping } = useConfig();
   const cart = useCart();
   const { lines, subtotal, isLoading, hasBlockers } = useCartLines();
   const navigate = useNavigate();
@@ -52,6 +55,12 @@ function Checkout({ onPlaced }) {
   const [courier, setCourier] = useState(() => couriers[0]?.code ?? '');
   const [method, setMethod] = useState(() => paymentMethods[0]?.code ?? '');
   const [formErr, setFormErr] = useState('');
+
+  // Live rates only. `destination` is the resolved location the provider
+  // quotes to, and `quote` is the option the buyer picked — checkout submits
+  // its id, never a price, because the server charges what it stored.
+  const [destination, setDestination] = useState(null);
+  const [quote, setQuote] = useState(null);
 
   // The draft is the first server-priced view of this cart, and the review
   // step exists so the buyer approves it before a code is spent.
@@ -77,16 +86,29 @@ function Checkout({ onPlaced }) {
     return m;
   }, [lines]);
 
+  const cartItems = useMemo(
+    () => cart.items.map((it) => ({ product_id: it.productId, qty: it.qty })),
+    [cart.items],
+  );
+
   const draftMutation = useMutation({
     mutationFn: () =>
       createDraft({
-        items: cart.items.map((it) => ({ product_id: it.productId, qty: it.qty })),
+        items: cartItems,
+        // Under live rates the quote carries the courier and the price, so
+        // courier_code is not read; under flat pricing there is no quote and
+        // the code is the whole answer. Sending both is harmless and keeps
+        // one call site.
         courier_code: courier,
+        shipping_quote_id: quote?.quote_id ?? '',
         payment_method: method,
         contact: normalizeContact(contactChannel, form.contact),
         customer_name: form.customer_name.trim(),
         address: form.address.trim(),
-        city: form.city.trim(),
+        // The city the order is filed under. Under live rates it comes from
+        // the resolved destination, so an operator reads the same place the
+        // parcel was quoted to rather than whatever the buyer typed.
+        city: liveShipping ? destinationSummary(destination) : form.city.trim(),
       }),
     onSuccess: (d) => {
       setFormErr('');
@@ -227,8 +249,18 @@ function Checkout({ onPlaced }) {
         return setFormErr(`${LABELS[key]} terlalu panjang (maksimal ${max} karakter).`);
       }
     }
-    if (!form.customer_name.trim() || !form.address.trim() || !form.city.trim()) {
-      return setFormErr('Lengkapi nama, alamat, dan kota dulu ya.');
+    const cityFilled = liveShipping ? Boolean(destination) : Boolean(form.city.trim());
+    if (!form.customer_name.trim() || !form.address.trim() || !cityFilled) {
+      return setFormErr(
+        liveShipping
+          ? 'Lengkapi nama, alamat, dan tujuan pengiriman dulu ya.'
+          : 'Lengkapi nama, alamat, dan kota dulu ya.',
+      );
+    }
+    // No fallback to a flat rate: charging one the buyer was never shown is
+    // worse than asking them to pick again.
+    if (liveShipping && !quote) {
+      return setFormErr('Pilih ongkir dulu ya.');
     }
     const contactErr = validateContact(contactChannel, form.contact);
     if (contactErr) return setFormErr(contactErr);
@@ -242,7 +274,9 @@ function Checkout({ onPlaced }) {
       <Review
         draft={draft}
         cartPrices={cartPrices}
-        courier={couriers.find((c) => c.code === courier)}
+        // Under live rates the chosen quote names the service; the config's
+        // courier list only carries the allow-list, not the price.
+        courier={liveShipping ? quote : couriers.find((c) => c.code === courier)}
         method={paymentMethods.find((m) => m.code === method)}
         error={formErr}
         otp={otp}
@@ -265,7 +299,12 @@ function Checkout({ onPlaced }) {
     );
   }
 
-  const estShipping = estimateShipping(subtotal, freeShippingMin, couriers.find((c) => c.code === courier));
+  // Under live rates the chosen quote is the estimate, and it is a real
+  // quoted price rather than a mirror of a server rule — so the summary can
+  // say so instead of hedging.
+  const estShipping = liveShipping
+    ? estimateShipping(subtotal, freeShippingMin, quote ? { cost: quote.cost } : null)
+    : estimateShipping(subtotal, freeShippingMin, couriers.find((c) => c.code === courier));
 
   return (
     <main
@@ -322,16 +361,33 @@ function Checkout({ onPlaced }) {
               rows={3}
               style={{ ...field, marginTop: 12, resize: 'vertical' }}
             />
-            <input
-              name="city"
-              value={form.city}
-              onChange={setField}
-              placeholder="Kota"
-              aria-label="Kota"
-              autoComplete="address-level2"
-              maxLength={LIMITS.city}
-              style={{ ...field, marginTop: 12 }}
-            />
+            {liveShipping ? (
+              // The provider quotes from a location id, not from an address,
+              // so a free-text city cannot reach it. Picking here is what
+              // makes a price exist at all.
+              <DestinationPicker
+                value={destination}
+                onChange={(d) => {
+                  setFormErr('');
+                  setDestination(d);
+                  // The old quote priced a different route. Dropping it means
+                  // the buyer re-picks while looking at the new list, rather
+                  // than being refused one screen later.
+                  setQuote(null);
+                }}
+              />
+            ) : (
+              <input
+                name="city"
+                value={form.city}
+                onChange={setField}
+                placeholder="Kota"
+                aria-label="Kota"
+                autoComplete="address-level2"
+                maxLength={LIMITS.city}
+                style={{ ...field, marginTop: 12 }}
+              />
+            )}
             <p style={{ fontSize: 12.5, color: '#B7AA9A', margin: '10px 0 0' }}>
               Kode verifikasi dikirim ke {contactMeta.noun} ini.
             </p>
@@ -339,19 +395,32 @@ function Checkout({ onPlaced }) {
 
           <section style={card}>
             <div style={cardTitle}>2 · Pengiriman</div>
-            <div style={{ display: 'grid', gap: 10 }}>
-              {couriers.map((c) => (
-                <OptionTile key={c.code} selected={courier === c.code} onClick={() => setCourier(c.code)}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                    <span>
-                      <strong>{c.name}</strong>
-                      <span style={{ color: '#8A7D70', fontSize: 13 }}> · {c.eta}</span>
-                    </span>
-                    <strong>{fmt(c.cost)}</strong>
-                  </div>
-                </OptionTile>
-              ))}
-            </div>
+            {liveShipping ? (
+              <ShippingRates
+                destination={destination}
+                items={cartItems}
+                selected={quote?.quote_id ?? ''}
+                onSelect={setQuote}
+                onRetry={() => {
+                  setDestination(null);
+                  setQuote(null);
+                }}
+              />
+            ) : (
+              <div style={{ display: 'grid', gap: 10 }}>
+                {couriers.map((c) => (
+                  <OptionTile key={c.code} selected={courier === c.code} onClick={() => setCourier(c.code)}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                      <span>
+                        <strong>{c.name}</strong>
+                        <span style={{ color: '#8A7D70', fontSize: 13 }}> · {c.eta}</span>
+                      </span>
+                      <strong>{fmt(c.cost)}</strong>
+                    </div>
+                  </OptionTile>
+                ))}
+              </div>
+            )}
           </section>
 
           <section style={card}>
@@ -394,7 +463,16 @@ function Checkout({ onPlaced }) {
           </div>
 
           <SummaryRow label="Subtotal" value={fmt(subtotal)} />
-          <SummaryRow label="Ongkir" value={estShipping === 0 ? 'Gratis' : fmt(estShipping)} />
+          <SummaryRow
+            label="Ongkir"
+            value={
+              liveShipping && !quote
+                ? 'Belum dipilih'
+                : estShipping === 0
+                  ? 'Gratis'
+                  : fmt(estShipping)
+            }
+          />
           <p style={{ fontSize: 12, color: '#B7AA9A', margin: '10px 0 0' }}>
             Perkiraan. Total pastinya muncul di langkah berikutnya.
           </p>
