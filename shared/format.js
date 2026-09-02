@@ -18,17 +18,32 @@ export function fmtDate(value) {
   return Number.isNaN(d.getTime()) ? '' : DATE_FMT.format(d);
 }
 
-const DATETIME_FMT = new Intl.DateTimeFormat('id-ID', {
+const DATETIME_DATE_FMT = new Intl.DateTimeFormat('id-ID', {
   day: 'numeric',
   month: 'short',
-  hour: '2-digit',
-  minute: '2-digit',
 });
+
+/**
+ * The clock, as everyone writes it down.
+ *
+ * Not `Intl`: `id-ID` separates hours from minutes with a dot, so a formatter
+ * asked for a time renders half past four as `16.22` — which reads as a
+ * decimal, and which nobody in a warehouse writes on a label. The date half
+ * still goes through `Intl`, because month names are exactly what a locale is
+ * for.
+ */
+export function fmtTime(value) {
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 export function fmtDateTime(value) {
   if (!value) return '';
   const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? '' : DATETIME_FMT.format(d);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${DATETIME_DATE_FMT.format(d)}, ${fmtTime(d)}`;
 }
 
 /** mm:ss for the OTP and payment countdowns. */
