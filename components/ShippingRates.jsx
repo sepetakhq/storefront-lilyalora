@@ -203,11 +203,15 @@ function RateTile({ option, free, selected, onClick }) {
  * read the same tomorrow, and offering a button there would leave the buyer
  * pressing it forever.
  */
-function RateProblem({ error, onRetry, onEdit }) {
+export function RateProblem({ error, onRetry, onEdit }) {
   const status = error?.status;
   const code = error?.code;
 
-  const retryable = !error || status === 503 || status >= 500 || error?.isNetwork?.();
+  // isNetwork is a getter, not a method. Called as error?.isNetwork?.() it
+  // evaluated `true?.()` on an actual network failure and threw a TypeError
+  // while rendering the error panel -- so the one path that exists to explain
+  // a failure crashed exactly when it was needed.
+  const retryable = !error || status === 503 || status >= 500 || error?.isNetwork;
   const heading = retryable
     ? 'Ongkir belum bisa dihitung sekarang.'
     : code === 'shipping_unavailable'
