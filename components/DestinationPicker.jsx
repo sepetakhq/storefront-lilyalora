@@ -1,9 +1,14 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
-import { searchDestinations } from '../api/endpoints.js';
+import { resolveDestination, searchDestinations } from '../api/endpoints.js';
 import { qk } from '../api/queryKeys.js';
-import { destinationLines, matchRange } from '../lib/shipping.js';
+import {
+  destinationLines,
+  isUnserved,
+  matchRange,
+  unservedAlternatives,
+} from '../lib/shipping.js';
 
 // Where the parcel is going.
 //
@@ -57,11 +62,33 @@ export default function DestinationPicker({ value, onChange, disabled }) {
     return () => document.removeEventListener('mousedown', onAway);
   }, []);
 
-  function pick(row) {
-    onChange(row);
-    setQ('');
-    setOpen(false);
-    setActive(0);
+  // Picking is now a request, not just a state change.
+  //
+  // Search reads our own gazetteer and costs nothing, so a row on screen names
+  // a real place but not yet one any courier has an id for. Resolving is the
+  // step that asks the providers, and it happens once per choice -- never per
+  // keystroke, which is what it used to cost.
+  const [resolving, setResolving] = useState(false);
+  const [unserved, setUnserved] = useState(null);
+
+  async function pick(row) {
+    if (!row || resolving) return;
+    setResolving(true);
+    setUnserved(null);
+    try {
+      const { destination } = await resolveDestination(row.ref);
+      onChange(destination);
+      setQ('');
+      setOpen(false);
+      setActive(0);
+    } catch (err) {
+      // Rendered rather than rethrown: this runs in an async click handler, so
+      // a throw here is an unhandled rejection the buyer never sees.
+      setUnserved(err);
+      setOpen(false);
+    } finally {
+      setResolving(false);
+    }
   }
 
   function onKeyDown(e) {
@@ -206,6 +233,71 @@ export default function DestinationPicker({ value, onChange, disabled }) {
               );
             })
           )}
+        </ul>
+      ) : null}
+
+      {unserved ? <Unserved error={unserved} onPick={pick} query={term} /> : null}
+    </div>
+  );
+}
+
+/**
+ * The refusal, and what to do about it.
+ *
+ * Shown in place of the dropdown rather than inside it, because it is an
+ * answer to a choice the buyer already made: the village exists, we simply
+ * cannot get a parcel to it. Every alternative offered is a place already
+ * known to resolve, so picking one cannot fail the same way.
+ */
+function Unserved({ error, onPick, query }) {
+  const alternatives = unservedAlternatives(error);
+  const isRefusal = isUnserved(error);
+
+  return (
+    <div
+      role="alert"
+      style={{
+        marginTop: 8,
+        border: '1px solid #F3B8C8',
+        borderRadius: 14,
+        padding: '12px 14px',
+        background: '#FFF7FA',
+      }}
+    >
+      <div style={{ fontSize: 13.5, color: '#B4557A' }}>
+        {error?.message || 'Tujuan itu belum bisa dipakai. Coba pilih yang lain ya.'}
+      </div>
+
+      {isRefusal && alternatives.length > 0 ? (
+        <ul role="listbox" style={{ listStyle: 'none', padding: 0, margin: '10px 0 0' }}>
+          {alternatives.map((row) => {
+            const { primary, secondary } = destinationLines(row);
+            return (
+              <li key={row.ref} role="option" aria-selected={false}>
+                <button
+                  type="button"
+                  onClick={() => onPick(row)}
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    border: '1px solid #F0E4CF',
+                    borderRadius: 11,
+                    background: '#fff',
+                    padding: '9px 10px',
+                    marginTop: 6,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <span style={{ display: 'block', fontSize: 14, color: '#43382E' }}>
+                    <Highlight text={primary} query={query} />
+                  </span>
+                  <span style={{ display: 'block', fontSize: 12, color: '#B49E6A' }}>
+                    {secondary}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
         </ul>
       ) : null}
     </div>

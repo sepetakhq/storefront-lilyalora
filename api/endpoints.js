@@ -38,6 +38,22 @@ export const searchDestinations = async (q, signal) =>
     ?.results ?? [];
 
 /**
+ * Turns a picked place into a quotable destination.
+ *
+ * Separate from the search above because the two cost different things:
+ * searching reads the server's own list of Indonesian places and is free, so
+ * it can run on every keystroke, while this asks the couriers for their own id
+ * and runs once, when the buyer chooses. A place resolved once stays resolved
+ * for everyone.
+ *
+ * Throws ApiError(409, 'destination_unserved') when no courier serves the
+ * place; `details.alternatives` then carries nearby ones that are served.
+ */
+export const resolveDestination = async (ref, signal) =>
+  (await apiFetch('/shipping/destinations/resolve', { method: 'POST', body: { ref }, signal }))
+    .data;
+
+/**
  * Prices this cart to one destination.
  *
  * The options come back carrying a quote id each. That id, not a price, is
