@@ -5,7 +5,9 @@ import { useMutation } from '@tanstack/react-query';
 import { sendLookupCode, verifyLookupCode } from '../api/endpoints.js';
 import { useConfig } from '../config/ConfigProvider.jsx';
 import { contactField, normalizeContact, validateContact } from '../lib/contact.js';
-import { extractToken, listOrders } from '../checkout/orderTokens.js';
+import { extractToken, forgetOrder, listOrders } from '../checkout/orderTokens.js';
+import { deviceRows, tokensOf } from '../lib/deviceOrders.js';
+import { useOrdersByToken } from '../hooks/queries.js';
 import { recordRetryAfter, recordSend, cooldown } from '../checkout/otpCooldown.js';
 import { CountdownWords } from '../ui/Countdown.jsx';
 import { fmt, fmtDateTime } from '../shared/format.js';
@@ -33,7 +35,16 @@ export default function LookupRoute() {
   const meta = contactField(contactChannel);
   const navigate = useNavigate();
 
-  const [deviceOrders] = useState(listOrders);
+  // Read once, then held in state so removing a dead row re-renders. This list
+  // is the buyer's own copy of tokens no endpoint can reissue.
+  const [deviceOrders, setDeviceOrders] = useState(listOrders);
+  const deviceChecks = useOrdersByToken(tokensOf(deviceOrders));
+  const rows = deviceRows(deviceOrders, deviceChecks);
+
+  const dropRow = (token) => {
+    forgetOrder(token);
+    setDeviceOrders((list) => list.filter((o) => o.token !== token));
+  };
   const [link, setLink] = useState('');
   const [linkErr, setLinkErr] = useState('');
   const [contact, setContact] = useState('');
@@ -96,35 +107,51 @@ export default function LookupRoute() {
         Buka pesananmu lewat tautan yang kami kirim, atau cari dengan {meta.noun}.
       </p>
 
-      {deviceOrders.length > 0 ? (
+      {rows.length > 0 ? (
         <section style={{ ...card, marginBottom: 20 }}>
           <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 14 }}>Pesanan dari perangkat ini</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {deviceOrders.map((o) => (
-              <Link
-                key={o.token}
-                to={`/pesanan/${o.token}`}
-                className="hv-bd-pink"
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  gap: 12,
-                  border: '1px solid #F0E4CF',
-                  borderRadius: 14,
-                  padding: '12px 14px',
-                  color: '#43382E',
-                }}
-              >
-                <span>
-                  <strong>{o.number}</strong>
-                  <span style={{ display: 'block', fontSize: 12.5, color: '#8A7D70' }}>
-                    {fmtDateTime(o.placedAt)}
+            {rows.map((o) =>
+              o.state === 'gone' ? (
+                // Not a link. It points at nothing, and letting the buyer
+                // click through to "Pesanan tidak ditemukan" with no way back
+                // is how this row stayed in the list for good.
+                <div key={o.token} style={{ ...deviceRow, ...deviceRowGone }}>
+                  <span>
+                    <strong style={{ textDecoration: 'line-through' }}>{o.number}</strong>
+                    <span style={{ display: 'block', fontSize: 12.5, color: '#8A7D70' }}>
+                      Pesanan ini sudah tidak ada.
+                    </span>
                   </span>
-                </span>
-                <strong style={{ fontSize: 14 }}>{o.total ? fmt(o.total) : ''}</strong>
-              </Link>
-            ))}
+                  <button
+                    type="button"
+                    onClick={() => dropRow(o.token)}
+                    style={{
+                      background: 'none',
+                      border: 0,
+                      cursor: 'pointer',
+                      color: '#B4557A',
+                      fontWeight: 700,
+                      fontSize: 13,
+                      padding: 0,
+                    }}
+                  >
+                    Hapus
+                  </button>
+                </div>
+              ) : (
+                <Link key={o.token} to={`/pesanan/${o.token}`} className="hv-bd-pink" style={deviceRow}>
+                  <span>
+                    <strong>{o.number}</strong>
+                    <span style={{ display: 'block', fontSize: 12.5, color: '#8A7D70' }}>
+                      {fmtDateTime(o.placedAt)}
+                      {o.statusLabel ? ` · ${o.statusLabel}` : ''}
+                    </span>
+                  </span>
+                  <strong style={{ fontSize: 14 }}>{o.total ? fmt(o.total) : ''}</strong>
+                </Link>
+              ),
+            )}
           </div>
         </section>
       ) : null}
@@ -303,4 +330,23 @@ const darkButton = {
   padding: '13px 24px',
   fontWeight: 700,
   fontSize: 14.5,
+};
+
+const deviceRow = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  gap: 12,
+  border: '1px solid #F0E4CF',
+  borderRadius: 14,
+  padding: '12px 14px',
+  color: '#43382E',
+};
+
+// A dead row stays visible rather than vanishing: a buyer who watches an order
+// disappear from their own history has no idea whether they imagined it.
+const deviceRowGone = {
+  color: '#8A7D70',
+  background: '#FAF7F2',
+  borderStyle: 'dashed',
 };

@@ -73,6 +73,34 @@ export function useProductsBySlug(slugs) {
   });
 }
 
+/**
+ * Checks a batch of remembered tracking tokens.
+ *
+ * The device list on /lacak is written from localStorage at checkout and used
+ * to be rendered straight back, number and total frozen at the moment of
+ * placing. So it showed no status — fourteen expired orders looked exactly
+ * like a live one — and it happily listed orders that no longer exist: two
+ * rows both reading LA-260829-0001, one of whose tokens 404s.
+ *
+ * Same shape as useProductsBySlug, and for the same reason: there is no
+ * batch-by-token endpoint, but these share the cache entries useOrder fills,
+ * so opening an order and coming back resolves without a request.
+ *
+ * A 404 is final and is not retried — that is the answer, not a failure.
+ * Anything else is: a buyer who goes offline must not have their order history
+ * appear to delete itself.
+ */
+export function useOrdersByToken(tokens) {
+  return useQueries({
+    queries: (tokens ?? []).map((token) => ({
+      queryKey: qk.track(token),
+      queryFn: ({ signal }) => trackOrder(token, signal),
+      staleTime: 30_000,
+      retry: (count, err) => (err?.status === 404 ? false : count < 1),
+    })),
+  });
+}
+
 const POLL_GRACE_MS = 3 * 60_000;
 
 /**

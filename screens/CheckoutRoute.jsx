@@ -249,19 +249,26 @@ function Checkout({ onPlaced }) {
         return setFormErr(`${LABELS[key]} terlalu panjang (maksimal ${max} karakter).`);
       }
     }
-    const cityFilled = liveShipping ? Boolean(destination) : Boolean(form.city.trim());
-    if (!form.customer_name.trim() || !form.address.trim() || !cityFilled) {
-      return setFormErr(
-        liveShipping
-          ? 'Lengkapi nama, alamat, dan tujuan pengiriman dulu ya.'
-          : 'Lengkapi nama, alamat, dan kota dulu ya.',
-      );
+    // Every empty required field named at once, contact included. It used to
+    // be left out of this check and validated three lines further down, so a
+    // buyer filling an empty form was told to complete three fields, did, and
+    // only then discovered a fourth.
+    const missing = missingFields({
+      form,
+      liveShipping,
+      destination,
+      contactLabel: contactField(contactChannel).label,
+    });
+    if (missing.length > 0) {
+      return setFormErr(`Lengkapi ${listPhrase(missing)} dulu ya.`);
     }
     // No fallback to a flat rate: charging one the buyer was never shown is
     // worse than asking them to pick again.
     if (liveShipping && !quote) {
       return setFormErr('Pilih ongkir dulu ya.');
     }
+    // Reached only once contact holds something, so this is about the shape of
+    // what was typed rather than its absence.
     const contactErr = validateContact(contactChannel, form.contact);
     if (contactErr) return setFormErr(contactErr);
 
@@ -477,12 +484,11 @@ function Checkout({ onPlaced }) {
             Perkiraan. Total pastinya muncul di langkah berikutnya.
           </p>
 
-          {formErr ? (
-            <div role="alert" style={errorBox}>
-              {formErr}
-            </div>
-          ) : null}
-
+          {/* Below the button, not above it. A message above pushed "Buat
+              pesanan" down by its own height the instant it appeared — out
+              from under the cursor that had just clicked it, so an impatient
+              second click landed on nothing. role="alert" is what carries it
+              to a screen reader, and that does not depend on being first. */}
           <button
             type="submit"
             className="hv-primary"
@@ -495,6 +501,12 @@ function Checkout({ onPlaced }) {
           >
             {draftMutation.isPending ? 'Menghitung…' : 'Buat pesanan'}
           </button>
+
+          {formErr ? (
+            <div role="alert" style={errorBox}>
+              {formErr}
+            </div>
+          ) : null}
         </aside>
       </form>
     </main>
@@ -711,6 +723,34 @@ const LABELS = {
   city: 'Kota',
   contact: 'Kontak',
 };
+
+/**
+ * Which required fields are still empty, in the order they appear on screen.
+ *
+ * Exported for its own test: it is the part that decides what the buyer is
+ * told, and it was wrong for as long as it was inline.
+ *
+ * The destination is a picked object under live rates and free text under flat
+ * ones, so the two modes disagree on the label as well as the check.
+ */
+export function missingFields({ form, liveShipping, destination, contactLabel }) {
+  const out = [];
+  if (!form.customer_name.trim()) out.push(LABELS.customer_name.toLowerCase());
+  if (!String(form.contact ?? '').trim()) out.push(contactLabel.toLowerCase());
+  if (!form.address.trim()) out.push(LABELS.address.toLowerCase());
+  if (liveShipping) {
+    if (!destination) out.push('tujuan pengiriman');
+  } else if (!form.city.trim()) {
+    out.push(LABELS.city.toLowerCase());
+  }
+  return out;
+}
+
+/** "nama, alamat, dan kota" — an Indonesian list, serial "dan", no comma. */
+export function listPhrase(items) {
+  if (items.length <= 1) return items[0] ?? '';
+  return `${items.slice(0, -1).join(', ')} dan ${items[items.length - 1]}`;
+}
 
 const pageTitle = {
   fontFamily: "'Cormorant Garamond',serif",

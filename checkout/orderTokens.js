@@ -38,6 +38,23 @@ export function rememberOrder({ token, number, total, placedAt }) {
   return writeJson(localStorage, KEY, { v: VERSION, orders: next.slice(0, MAX) });
 }
 
+/**
+ * Drops one order from the device list.
+ *
+ * Only for a token the server has answered 404 to: the row points at nothing,
+ * and leaving it there means a buyer clicking their own order history lands on
+ * "Pesanan tidak ditemukan" with no way to clear it. Removing anything else
+ * would destroy the buyer's only copy of a tracking token — see the note at
+ * the top of this file.
+ *
+ * @returns {boolean} false when storage refused the write.
+ */
+export function forgetOrder(token) {
+  if (!token) return false;
+  const next = read().filter((o) => o.token !== token);
+  return writeJson(localStorage, KEY, { v: VERSION, orders: next });
+}
+
 const TOKEN_RE = /[A-Z2-7]{26}/;
 
 /**
