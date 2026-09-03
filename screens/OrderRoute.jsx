@@ -175,6 +175,14 @@ export default function OrderRoute() {
                 : fmt(order.shipping_cost - order.shipping_discount)
             }
           />
+          {/*
+            The same row the confirmation screen showed, from the order's own
+            frozen copy — so a buyer comparing the two sees the same number
+            even if the rate has moved since. Absent when the shop absorbed it.
+          */}
+          {order.payment_fee > 0 ? (
+            <Row label="Biaya admin" value={fmt(order.payment_fee)} />
+          ) : null}
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 17, fontWeight: 700 }}>
             <span>Total</span>
             <span style={{ color: '#D26E8E' }}>{fmt(order.total)}</span>

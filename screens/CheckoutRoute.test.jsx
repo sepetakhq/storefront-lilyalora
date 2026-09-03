@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { estimateShipping, listPhrase, missingFields } from './CheckoutRoute.jsx';
+import {
+  estimatePaymentFee,
+  estimateShipping,
+  listPhrase,
+  methodFits,
+  missingFields,
+  outOfRangeReason,
+} from './CheckoutRoute.jsx';
 
 const empty = { customer_name: '', contact: '', address: '', city: '' };
 const full = {
@@ -103,5 +110,89 @@ describe('estimateShipping', () => {
 
   it('is zero before a courier is chosen', () => {
     expect(estimateShipping(500000, null, { enabled: false, min: 150000 })).toBe(0);
+  });
+});
+
+// --- what paying costs, before the draft says for certain --------------------
+
+// The rate the server sends is one combined number: the gateway's cut and the
+// platform's margin already folded together, rounded up to a whole basis
+// point. The split never reaches a browser.
+const qris = { code: 'QRIS', fee_flat: 858, fee_basis_pt: 172 };
+const bcaVA = { code: 'BCA', fee_flat: 6402, fee_basis_pt: 0, min_order_total: 10000 };
+
+describe('estimatePaymentFee', () => {
+  // The same table as TestEffectiveFeeMatchesTheStorefront in
+  // backend/internal/payment/quote_test.go. These exist so a change to the
+  // rounding on either side fails on both. If you edit one, edit the other.
+  const pinned = [
+    { flat: 856, basisPt: 172, base: 100000, want: 2576 },
+    { flat: 856, basisPt: 172, base: 0, want: 856 },
+    { flat: 856, basisPt: 172, base: 1, want: 857 },
+    { flat: 4941, basisPt: 101, base: 100000, want: 5951 },
+    { flat: 0, basisPt: 0, base: 100000, want: 0 },
+    { flat: 353, basisPt: 71, base: 10000, want: 424 },
+  ];
+  for (const c of pinned) {
+    it(`Rp ${c.flat} + ${c.basisPt}bp on ${c.base} is ${c.want}`, () => {
+      expect(
+        estimatePaymentFee(c.base, { fee_flat: c.flat, fee_basis_pt: c.basisPt }),
+      ).toBe(c.want);
+    });
+  }
+
+  // Rounds up, mirroring payment.ChannelFee.On: under-stating a fee is the
+  // failure the whole thing exists to prevent, and an estimate below the real
+  // charge is the one direction a buyer must never be shown.
+  it('rounds up rather than down', () => {
+    expect(estimatePaymentFee(200, { fee_flat: 0, fee_basis_pt: 70 })).toBe(2);
+  });
+
+  it('charges nothing when the shop absorbs the cost', () => {
+    // A merchant-pays storefront is sent no rate at all, so there is nothing
+    // to estimate and nothing to show.
+    expect(estimatePaymentFee(100000, { code: 'QRIS' })).toBe(0);
+    expect(estimatePaymentFee(100000, undefined)).toBe(0);
+  });
+});
+
+describe('which methods this cart fits', () => {
+  it('accepts a cart inside the channel’s bounds', () => {
+    expect(methodFits({ min_order_total: 500, max_order_total: 5000000 }, 92000)).toBe(true);
+  });
+
+  it('refuses a cart under the floor, and says which floor', () => {
+    expect(methodFits(bcaVA, 5000)).toBe(false);
+    expect(outOfRangeReason(bcaVA, 5000)).toBe('Minimal Rp 10.000 untuk metode ini.');
+  });
+
+  it('refuses a cart over the ceiling, and says which ceiling', () => {
+    const m = { max_order_total: 5000000 };
+    expect(methodFits(m, 6000000)).toBe(false);
+    expect(outOfRangeReason(m, 6000000)).toBe('Maksimal Rp 5.000.000 untuk metode ini.');
+  });
+
+  // Zero means the channel states no bound, which is not the same as a bound
+  // of nothing -- it matches payment.AmountRange's own convention.
+  it('treats an unstated bound as no bound', () => {
+    expect(methodFits({ min_order_total: 0, max_order_total: 0 }, 20000000)).toBe(true);
+    expect(methodFits({}, 1)).toBe(true);
+  });
+
+  // An empty cart is not out of range, it is not yet a cart. Greying every
+  // method out before the buyer has added anything would read as an outage.
+  it('says nothing about a cart with no value yet', () => {
+    expect(methodFits(bcaVA, 0)).toBe(true);
+  });
+});
+
+// The bounds arrive already expressed in order-value terms, because the server
+// inverts the gross-up. So a cart that fits is one whose *charge* fits, and the
+// screen never has to reason about the fee to know that.
+describe('the bounds are about the order, not the charge', () => {
+  it('compares the cart against the bound directly', () => {
+    const m = { ...qris, max_order_total: 100000 };
+    expect(methodFits(m, 100000)).toBe(true);
+    expect(methodFits(m, 100001)).toBe(false);
   });
 });

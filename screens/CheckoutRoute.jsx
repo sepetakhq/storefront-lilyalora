@@ -315,6 +315,12 @@ function Checkout({ onPlaced }) {
     ? estimateShipping(subtotal, quote ? { cost: quote.cost } : null, free)
     : estimateShipping(subtotal, couriers.find((c) => c.code === courier), free);
 
+  // The order value a fee and a channel's bounds apply to: goods plus ongkir,
+  // before the fee itself. Advisory, like everything on this side of the
+  // draft, and it is what the tiles are measured against.
+  const estBase = subtotal + estShipping;
+  const estFee = estimatePaymentFee(estBase, paymentMethods.find((p) => p.code === method));
+
   return (
     <main
       aria-label="Checkout"
@@ -435,12 +441,34 @@ function Checkout({ onPlaced }) {
           <section style={card}>
             <div style={cardTitle}>3 · Pembayaran</div>
             <div style={{ display: 'grid', gap: 10 }}>
-              {paymentMethods.map((p) => (
-                <OptionTile key={p.code} selected={method === p.code} onClick={() => setMethod(p.code)}>
-                  <strong>{p.name}</strong>
-                  <div style={{ color: '#8A7D70', fontSize: 13 }}>{p.sub}</div>
-                </OptionTile>
-              ))}
+              {paymentMethods.map((p) => {
+                const fits = methodFits(p, estBase);
+                const fee = estimatePaymentFee(estBase, p);
+                return (
+                  <OptionTile
+                    key={p.code}
+                    selected={method === p.code}
+                    disabled={!fits}
+                    onClick={() => fits && setMethod(p.code)}
+                  >
+                    <strong>{p.name}</strong>
+                    <div style={{ color: '#8A7D70', fontSize: 13 }}>
+                      {p.sub}
+                      {fee > 0 ? ` · biaya admin ${fmt(fee)}` : ''}
+                    </div>
+                    {/*
+                      Said here rather than after the draft is built: the
+                      server refuses an out-of-range total too, but by then the
+                      buyer has spent a verification code to find out.
+                    */}
+                    {!fits ? (
+                      <div style={{ color: '#B7573C', fontSize: 12.5, marginTop: 2 }}>
+                        {outOfRangeReason(p, estBase)}
+                      </div>
+                    ) : null}
+                  </OptionTile>
+                );
+              })}
             </div>
           </section>
         </div>
@@ -482,8 +510,10 @@ function Checkout({ onPlaced }) {
                   : fmt(estShipping)
             }
           />
+          {estFee > 0 ? <SummaryRow label="Biaya admin" value={fmt(estFee)} /> : null}
           <p style={{ fontSize: 12, color: '#B7AA9A', margin: '10px 0 0' }}>
-            Perkiraan. Total pastinya muncul di langkah berikutnya.
+            Perkiraan, termasuk biaya admin. Total pastinya muncul di langkah
+            berikutnya.
           </p>
 
           {/* Below the button, not above it. A message above pushed "Buat
@@ -630,6 +660,14 @@ function Review({
                 : fmt(draft.shipping_cost - draft.shipping_discount)
             }
           />
+          {/*
+            One row, never the split between what the gateway takes and what
+            the platform keeps — the buyer is paying one fee and has no use for
+            its parts. Absent entirely when the shop absorbs the cost.
+          */}
+          {draft.payment_fee > 0 ? (
+            <SummaryRow label="Biaya admin" value={fmt(draft.payment_fee)} />
+          ) : null}
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 18, fontWeight: 700, marginTop: 4 }}>
             <span>Total</span>
             <span style={{ color: '#D26E8E' }}>{fmt(draft.total)}</span>
@@ -685,11 +723,12 @@ function Review({
   );
 }
 
-function OptionTile({ selected, onClick, children }) {
+function OptionTile({ selected, onClick, disabled, children }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       aria-pressed={selected}
       style={{
         textAlign: 'left',
@@ -697,6 +736,12 @@ function OptionTile({ selected, onClick, children }) {
         background: selected ? '#FDF0F4' : '#FFFDF7',
         borderRadius: 14,
         padding: '12px 14px',
+        // Dimmed rather than hidden: a buyer whose cart is too large for a
+        // virtual account needs to see that the method exists and why it is
+        // unavailable, or they will look for it and conclude the shop is
+        // broken.
+        opacity: disabled ? 0.55 : 1,
+        cursor: disabled ? 'not-allowed' : 'pointer',
       }}
     >
       {children}
@@ -720,6 +765,54 @@ function SummaryRow({ label, value }) {
  * alone cannot express a shop that has withdrawn it: a min of zero means every
  * order ships free, so "off" has to be its own flag on both sides of the wire.
  */
+/**
+ * What paying with this method will add, before the draft says for certain.
+ *
+ * A three-line mirror of payment.ChannelFee.On, rounding up for the same
+ * reason it does. The rate the server sends is one combined number -- the
+ * gateway's cut and the platform's margin already folded together -- and it is
+ * rounded up to a whole basis point, so this lands a few rupiah *above* the
+ * authoritative fee rather than below it. That direction is deliberate: a
+ * buyer shown a slightly high estimate and then charged less has been treated
+ * fairly, and the reverse has not.
+ *
+ * Advisory, exactly like estimateShipping. The number that actually charges
+ * anyone comes from the draft.
+ */
+export function estimatePaymentFee(base, method) {
+  const flat = method?.fee_flat ?? 0;
+  const bps = method?.fee_basis_pt ?? 0;
+  if (!flat && !bps) return 0;
+  if (!(base > 0)) return flat;
+  return flat + Math.ceil((base * bps) / 10000);
+}
+
+/**
+ * Whether this cart is within what the method's channel accepts.
+ *
+ * The bounds arrive already expressed in order-value terms -- the server
+ * inverts the gross-up in payment.MinBase and MaxBase -- so this compares like
+ * with like and never has to reason about the fee itself. Zero means the
+ * channel states no bound, which is not the same as a bound of nothing.
+ */
+export function methodFits(method, base) {
+  if (!(base > 0)) return true;
+  const min = method?.min_order_total ?? 0;
+  const max = method?.max_order_total ?? 0;
+  if (min > 0 && base < min) return false;
+  if (max > 0 && base > max) return false;
+  return true;
+}
+
+/** Why this cart cannot use this method, in the buyer's terms. */
+export function outOfRangeReason(method, base) {
+  const min = method?.min_order_total ?? 0;
+  const max = method?.max_order_total ?? 0;
+  if (min > 0 && base < min) return `Minimal ${fmt(min)} untuk metode ini.`;
+  if (max > 0 && base > max) return `Maksimal ${fmt(max)} untuk metode ini.`;
+  return '';
+}
+
 export function estimateShipping(subtotal, courier, free) {
   if (!courier) return 0;
   return free.enabled && subtotal >= free.min ? 0 : courier.cost;
