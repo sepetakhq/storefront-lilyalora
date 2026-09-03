@@ -9,6 +9,7 @@ import {
 } from '../api/endpoints.js';
 import { qk } from '../api/queryKeys.js';
 import { serverNow } from '../api/client.js';
+import { PAY_DEAD, paymentState } from '../lib/payment.js';
 
 const PAGE_SIZE = 12;
 
@@ -133,6 +134,14 @@ export function useOrder(token, { poll = false } = {}) {
       if (expires && now > expires) {
         return now - expires < POLL_GRACE_MS ? 10_000 : false;
       }
+
+      // A dead intent carries no gateway reference, so no webhook can ever
+      // arrive for it and five-second polling is pure noise. Slowed rather
+      // than stopped: the *order* still changes, to expired, and a page that
+      // stopped looking would offer a retry long after the server would take
+      // one. A successful retry writes a live payment into this cache, which
+      // puts the ladder below back.
+      if (paymentState(data.payment) === PAY_DEAD) return 60_000;
 
       const age = Number.isNaN(placed) ? 0 : now - placed;
       if (age < 2 * 60_000) return 5_000;

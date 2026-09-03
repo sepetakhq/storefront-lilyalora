@@ -88,6 +88,22 @@ export async function trackOrder(token, signal) {
   return { order: res.order, payment: res.payment ?? null };
 }
 
+/**
+ * Re-opens the payment for an order whose instructions never arrived.
+ *
+ * No body: the amount, the method and the deadline are the order's and the
+ * gateway is the platform's, so there is nothing here a client could usefully
+ * send — or get wrong. Returns the same payment shape `trackOrder` does, so
+ * the caller writes it straight into the tracked-order cache.
+ */
+export const reopenPayment = async (token, signal) =>
+  (
+    await apiFetch(`/orders/track/${encodeURIComponent(token)}/payment`, {
+      method: 'POST',
+      signal,
+    })
+  ).data?.payment ?? null;
+
 export const sendLookupCode = async (contact, signal) =>
   (await apiFetch('/orders/lookup/otp/send', { method: 'POST', body: { contact }, signal })).data;
 

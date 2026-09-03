@@ -1,4 +1,5 @@
 import { Suspense, lazy, useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useLocation, useParams } from 'react-router-dom';
 
 import { Img, SIZES } from '../ui/Img.jsx';
@@ -9,7 +10,15 @@ import { useOrder } from '../hooks/queries.js';
 import { useConfig } from '../config/ConfigProvider.jsx';
 import { serverNow } from '../api/client.js';
 import { fmt, fmtDateTime } from '../shared/format.js';
-import { isQrImageURL, isQrisPayload, isUsableRedirect } from '../lib/payment.js';
+import { reopenPayment } from '../api/endpoints.js';
+import { qk } from '../api/queryKeys.js';
+import {
+  PAY_DEAD,
+  isQrImageURL,
+  isQrisPayload,
+  isUsableRedirect,
+  paymentState,
+} from '../lib/payment.js';
 import { useToast } from '../ui/ToastProvider.jsx';
 
 // QrCode is lazy because it pulls in an encoder; QrImage is not, because it
@@ -35,6 +44,22 @@ export default function OrderRoute() {
   const tokenAtRisk = Boolean(location.state?.tokenAtRisk);
 
   const { data, isPending, isError, error, refetch } = useOrder(token, { poll: true });
+
+  const queryClient = useQueryClient();
+  const retry = useMutation({
+    mutationFn: () => reopenPayment(token),
+    // Not optimistic. There is no plausible placeholder for a QR code, and a
+    // rollback would flicker the panel between two failure messages.
+    onSuccess: (payment) => {
+      queryClient.setQueryData(qk.track(token), (prev) => (prev ? { ...prev, payment } : prev));
+    },
+    // Every refusal the server can give means the page is looking at stale
+    // state — already paid, already expired, order moved on. Re-read rather
+    // than guess which.
+    onError: (err) => {
+      if (err?.status === 409) refetch();
+    },
+  });
 
   if (isPending) return <OrderSkeleton />;
 
@@ -83,7 +108,16 @@ export default function OrderRoute() {
         Dipesan {fmtDateTime(order.placed_at)} · {order.customer_name} · {order.city}
       </p>
 
-      {awaiting ? <PaymentPanel order={order} payment={payment} onRefresh={refetch} /> : null}
+      {awaiting ? (
+        <PaymentPanel
+          order={order}
+          payment={payment}
+          onRefresh={refetch}
+          onRetry={retry.mutate}
+          retrying={retry.isPending}
+          retryError={retry.error}
+        />
+      ) : null}
 
       <Timeline order={order} />
 
@@ -167,40 +201,12 @@ export default function OrderRoute() {
 // every kind the backend can emit renders something a buyer can act on. That
 // seam is where a URL stored as a QR payload went unnoticed: both sides were
 // correct on their own terms and only disagreed when rendered.
-export function PaymentPanel({ order, payment, onRefresh }) {
+export function PaymentPanel({ order, payment, onRefresh, onRetry, retrying, retryError }) {
   const { brand, payment: payConfig } = useConfig();
   const showToast = useToast();
   const [pastDeadline, setPastDeadline] = useState(
     () => Boolean(order.expires_at) && serverNow() > Date.parse(order.expires_at),
   );
-
-  // The order exists and is valid; only the instructions are missing. There is
-  // no endpoint to create an intent, and the stub's unique gateway reference
-  // means one never can be — so this offers a person, not a retry button.
-  if (!payment) {
-    return (
-      <section style={{ ...card, borderColor: '#F3D3DE', background: '#FDF0F4', marginBottom: 20 }}>
-        <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>
-          Instruksi pembayaran belum tersedia
-        </div>
-        <p style={{ fontSize: 14, color: '#6E5B45', lineHeight: 1.7, margin: 0 }}>
-          Pesananmu tersimpan dengan nomor <strong>{order.number}</strong>, tapi instruksi
-          pembayarannya gagal dibuat. Hubungi kami dan sebutkan nomor itu — kami bantu selesaikan.
-        </p>
-        {brand.whatsapp_url ? (
-          <a
-            href={brand.whatsapp_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hv-dark"
-            style={{ ...darkButton, marginTop: 16 }}
-          >
-            {brand.whatsapp_text || 'Hubungi kami'}
-          </a>
-        ) : null}
-      </section>
-    );
-  }
 
   // Past the deadline the worker sweeps once a minute, so the order still
   // reads awaiting_payment for up to a minute. Saying "expired" here would be
@@ -214,6 +220,28 @@ export function PaymentPanel({ order, payment, onRefresh }) {
         </p>
         <span className="la-shimmer" style={{ display: 'block', height: 4, borderRadius: 999, marginTop: 16 }} />
       </section>
+    );
+  }
+
+  // One panel for what used to be two.
+  //
+  // A charge that dies at checkout returns no payment object at all; one that
+  // dies later returns a row with every payload column empty. Same failure,
+  // and it used to produce two different sentences — the second of which told
+  // the buyer the method was switched off, on a live method, on an order they
+  // could still pay.
+  //
+  // Below pastDeadline on purpose: past the deadline "waktu habis" is the true
+  // answer, and the server refuses a retry there anyway.
+  if (paymentState(payment) === PAY_DEAD) {
+    return (
+      <PaymentUnavailable
+        order={order}
+        brand={brand}
+        onRetry={onRetry}
+        retrying={retrying}
+        retryError={retryError}
+      />
     );
   }
 
@@ -282,22 +310,7 @@ export function PaymentPanel({ order, payment, onRefresh }) {
         <QrImageBlock url={payment.qr_image_url} config={payConfig} brand={brand} />
       ) : payment.kind === 'redirect' ? (
         <RedirectBlock url={payment.redirect_url} order={order} brand={brand} />
-      ) : (
-        // No kind at all: the intent carries none of the three payloads, which
-        // means the gateway answered with something we could not render.
-        <div style={{ fontSize: 14, color: '#6E5B45', lineHeight: 1.7 }}>
-          Metode pembayaran ini belum aktif. Hubungi kami untuk menyelesaikan pesanan{' '}
-          <strong>{order.number}</strong>.
-          {brand.whatsapp_url ? (
-            <>
-              <br />
-              <a href={brand.whatsapp_url} target="_blank" rel="noopener noreferrer" style={{ color: '#B4557A', fontWeight: 700 }}>
-                {brand.whatsapp_text || 'Hubungi kami'}
-              </a>
-            </>
-          ) : null}
-        </div>
-      )}
+      ) : null}
 
       <div style={{ borderTop: '1px solid #F0E4CF', marginTop: 18, paddingTop: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 12.5, color: '#B7AA9A' }}>
@@ -307,6 +320,87 @@ export function PaymentPanel({ order, payment, onRefresh }) {
           Cek sekarang
         </button>
       </div>
+    </section>
+  );
+}
+
+/**
+ * The order is fine; the instructions for paying it are not.
+ *
+ * Deliberately not shaped like the payment card above it. No countdown, no
+ * amount in display pink, no "cek sekarang" — every one of those said help was
+ * on its way, and none of it was. Blush on blush is the storefront's alert
+ * tone (see InlineError), so a buyer can tell at a glance this is not a
+ * payment instruction.
+ *
+ * "Coba lagi" is the whole point and gets the weight. WhatsApp stays, demoted
+ * to a link: it is the escape, not the action.
+ */
+function PaymentUnavailable({ order, brand, onRetry, retrying, retryError }) {
+  return (
+    <section
+      role="alert"
+      style={{
+        ...card,
+        borderColor: '#F3D3DE',
+        background: '#FDF0F4',
+        marginBottom: 20,
+      }}
+    >
+      <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>
+        Pembayaran belum bisa dibuka
+      </div>
+      <p style={{ fontSize: 14, color: '#6E5B45', lineHeight: 1.7, margin: 0 }}>
+        Pesananmu tersimpan dengan nomor <strong>{order.number}</strong> dan masih bisa dibayar
+        — yang gagal cuma pembuatan instruksi pembayarannya.
+      </p>
+
+      {onRetry ? (
+        <button
+          type="button"
+          onClick={onRetry}
+          disabled={retrying}
+          className={retrying ? undefined : 'hv-dark'}
+          style={{
+            ...darkButton,
+            opacity: retrying ? 0.6 : 1,
+            cursor: retrying ? 'wait' : 'pointer',
+          }}
+        >
+          {retrying ? 'Membuat ulang…' : 'Coba lagi'}
+        </button>
+      ) : null}
+
+      {/* Rendered verbatim: every message the API returns is Indonesian copy
+          written for a buyer, so the server owns the wording and there is no
+          table here to drift from it. */}
+      {retryError ? (
+        <p style={{ fontSize: 13.5, color: '#C05C7E', lineHeight: 1.7, margin: '12px 0 0' }}>
+          {retryError.message}
+        </p>
+      ) : null}
+
+      {/* Stated, not counted down. The deadline is real and the buyer needs
+          it; a ticking clock implied something was going to resolve itself. */}
+      {order.expires_at ? (
+        <p style={{ fontSize: 12.5, color: '#B7AA9A', margin: '14px 0 0' }}>
+          Batas pembayaran {fmtDateTime(order.expires_at)}.
+        </p>
+      ) : null}
+
+      {brand.whatsapp_url ? (
+        <p style={{ fontSize: 13.5, color: '#8A7D70', margin: '10px 0 0' }}>
+          Masih gagal?{' '}
+          <a
+            href={brand.whatsapp_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: '#B4557A', fontWeight: 700 }}
+          >
+            {brand.whatsapp_text || 'Hubungi kami'}
+          </a>
+        </p>
+      ) : null}
     </section>
   );
 }

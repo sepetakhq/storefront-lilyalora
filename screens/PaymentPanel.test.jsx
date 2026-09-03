@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // Testing Library only registers its own cleanup when vitest runs with
@@ -26,7 +26,9 @@ const emvco =
   '5204541153033605802ID5910LILY ALORA6010PEKALONGAN61055111162070703A016304ABCD';
 
 const order = {
-  order_number: 'LA-260830-0001',
+  // `number`, not `order_number`: that is the field the panel reads, and the
+  // typo meant every assertion quoting it silently matched "pesanan .".
+  number: 'LA-260830-0001',
   status: 'awaiting_payment',
   total: 75000,
   // An hour out, so the panel is not in its past-deadline branch.
@@ -37,8 +39,8 @@ const order = {
 // Its presence is the failure this whole file exists to catch.
 const DEAD_END = /QRIS mode uji|Metode pembayaran ini belum aktif/;
 
-function panel(payment) {
-  render(<PaymentPanel order={order} payment={payment} onRefresh={() => {}} />);
+function panel(payment, props = {}) {
+  render(<PaymentPanel order={order} payment={payment} onRefresh={() => {}} {...props} />);
 }
 
 // This is the seam the QRIS defect lived in. The adapter filled a field, the
@@ -119,6 +121,93 @@ describe('PaymentPanel refuses what it cannot render', () => {
     // this must not look like an error page.
     panel(null);
 
-    expect(screen.getByText(/Instruksi pembayaran belum tersedia/)).toBeTruthy();
+    expect(screen.getByText(/Pembayaran belum bisa dibuka/)).toBeTruthy();
+  });
+});
+
+// The defect this file failed to catch. A charge that dies at checkout returns
+// no payment object; one that dies later returns a row with an empty kind. Both
+// are the same failure, and the second used to render "Metode pembayaran ini
+// belum aktif" -- on a live method, on an order the buyer could still pay.
+describe('PaymentPanel when the charge never opened', () => {
+  const failed = { status: 'failed', method: 'QRIS', kind: '', amount: 200 };
+
+  it('says the same thing whether the intent is missing or failed', () => {
+    panel(null);
+    const missing = screen.getByText(/Pembayaran belum bisa dibuka/);
+    cleanup();
+
+    panel(failed);
+    const dead = screen.getByText(/Pembayaran belum bisa dibuka/);
+
+    expect(missing.textContent).toBe(dead.textContent);
+  });
+
+  it('never claims the method is switched off', () => {
+    panel(failed);
+
+    expect(screen.queryByText(DEAD_END)).toBeNull();
+  });
+
+  it('drops the countdown and the check-now button, which cannot help', () => {
+    panel(failed);
+
+    expect(screen.queryByText(/Cek sekarang/)).toBeNull();
+    expect(screen.queryByText(/^Sisa/)).toBeNull();
+    expect(screen.queryByText(/memperbarui sendiri/)).toBeNull();
+  });
+
+  it('names the order and says it is still payable', () => {
+    panel(failed);
+
+    expect(screen.getByText(/LA-260830-0001/)).toBeTruthy();
+    expect(screen.getByText(/masih bisa dibayar/)).toBeTruthy();
+    // The deadline is stated, not counted down.
+    expect(screen.getByText(/Batas pembayaran/)).toBeTruthy();
+  });
+
+  it('asks the server to re-open the payment', () => {
+    const onRetry = vi.fn();
+    panel(failed, { onRetry });
+
+    fireEvent.click(screen.getByText('Coba lagi'));
+
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it('will not fire twice while a retry is in flight', () => {
+    const onRetry = vi.fn();
+    panel(failed, { onRetry, retrying: true });
+
+    const button = screen.getByText('Membuat ulang…');
+    expect(button.disabled).toBe(true);
+
+    fireEvent.click(button);
+    expect(onRetry).not.toHaveBeenCalled();
+  });
+
+  it("renders the server's refusal verbatim", () => {
+    // API messages are Indonesian copy written for a buyer, so the server owns
+    // the wording and this component must not paraphrase it.
+    const message = 'Pembayaranmu sudah masuk. Halaman ini akan menyesuaikan sebentar lagi.';
+    panel(failed, { onRetry: () => {}, retryError: { message } });
+
+    expect(screen.getByText(message)).toBeTruthy();
+  });
+
+  it('still says something useful with no retry wired', () => {
+    panel(failed);
+
+    expect(screen.queryByText('Coba lagi')).toBeNull();
+    expect(screen.getByText(/Pembayaran belum bisa dibuka/)).toBeTruthy();
+    expect(screen.getByText(/Hubungi kami/)).toBeTruthy();
+  });
+
+  // The suppression above must be scoped to the dead branch and nothing else.
+  it('leaves a live payment panel alone', () => {
+    panel({ status: 'pending', kind: 'qr', method: 'QRIS', amount: 75000, qr_payload: emvco });
+
+    expect(screen.getByText(/Cek sekarang/)).toBeTruthy();
+    expect(screen.queryByText(/Pembayaran belum bisa dibuka/)).toBeNull();
   });
 });
