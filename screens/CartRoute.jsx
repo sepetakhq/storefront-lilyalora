@@ -9,7 +9,7 @@ import { didPurgeLegacy } from '../lib/storage.js';
 import { fmt } from '../shared/format.js';
 
 export default function CartRoute() {
-  const { freeShippingMin, freeShippingMinLabel } = useConfig();
+  const { freeShipping, freeShippingMin } = useConfig();
   const cart = useCart();
   const { lines, subtotal, isLoading, hasBlockers } = useCartLines();
 
@@ -45,32 +45,35 @@ export default function CartRoute() {
         Keranjang
       </h1>
 
-      <div
-        style={{
-          background: '#FDF6E3',
-          border: '1px solid #F0E4CF',
-          borderRadius: 16,
-          padding: '14px 18px',
-          marginBottom: 22,
-        }}
-      >
-        <div style={{ fontSize: 13.5, fontWeight: 600 }}>
-          {remaining > 0
-            ? `Belanja ${fmt(remaining)} lagi untuk gratis ongkir`
-            : 'Selamat — pesananmu gratis ongkir 🎉'}
+      {/* Nothing to make progress towards once the offer is switched off. */}
+      {freeShipping && (
+        <div
+          style={{
+            background: '#FDF6E3',
+            border: '1px solid #F0E4CF',
+            borderRadius: 16,
+            padding: '14px 18px',
+            marginBottom: 22,
+          }}
+        >
+          <div style={{ fontSize: 13.5, fontWeight: 600 }}>
+            {remaining > 0
+              ? `Belanja ${fmt(remaining)} lagi untuk gratis ongkir`
+              : 'Selamat — pesananmu gratis ongkir 🎉'}
+          </div>
+          <div style={{ background: '#F0E4CF', borderRadius: 999, height: 6, marginTop: 10 }}>
+            <div
+              style={{
+                width: `${pct}%`,
+                height: '100%',
+                background: '#D26E8E',
+                borderRadius: 999,
+                transition: 'width 0.3s',
+              }}
+            />
+          </div>
         </div>
-        <div style={{ background: '#F0E4CF', borderRadius: 999, height: 6, marginTop: 10 }}>
-          <div
-            style={{
-              width: `${pct}%`,
-              height: '100%',
-              background: '#D26E8E',
-              borderRadius: 999,
-              transition: 'width 0.3s',
-            }}
-          />
-        </div>
-      </div>
+      )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {lines.map((line) => (

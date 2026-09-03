@@ -65,3 +65,31 @@ export function interpolate(text, values) {
     key in values ? values[key] : whole,
   );
 }
+
+/**
+ * Brand copy, or '' when it advertises free shipping the shop no longer
+ * offers.
+ *
+ * The placeholder is the marker. A merchant string that names
+ * {free_shipping_min} is a promise about the checkout -- "gratis ongkir di
+ * atas ..." -- so when the offer is switched off the string is withheld rather
+ * than interpolated: substituting the threshold anyway would advertise a
+ * discount the next screen refuses to give, and there is no number to put in
+ * its place, since zero reads as "free for everyone".
+ *
+ * Copy that never mentions the threshold is unaffected either way -- it is not
+ * about shipping, and hiding it would empty half the storefront.
+ */
+export function shippingCopy(text, values, freeShipping) {
+  const s = text ?? '';
+  if (freeShipping || !s.includes('{free_shipping_min}')) return interpolate(s, values);
+  // Sentence by sentence, not the whole string: the product page's shipping
+  // paragraph names the couriers and the cut-off time in the same breath as
+  // the threshold, and dropping all of it left a "Pengiriman" panel that
+  // opened onto nothing.
+  const kept = (s.match(/[^.!?]+[.!?]*\s*/g) ?? [])
+    .filter((sentence) => !sentence.includes('{free_shipping_min}'))
+    .join('')
+    .trim();
+  return interpolate(kept, values);
+}

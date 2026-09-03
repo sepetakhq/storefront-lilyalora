@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { fmtClock, fmtDate, fmtDateTime, fmtTime, interpolate } from './format.js';
+import { fmtClock, fmtDate, fmtDateTime, fmtTime, interpolate, shippingCopy } from './format.js';
 
 // The clock is written by hand rather than by Intl, and the reason is the
 // whole test: `id-ID` puts a dot between hours and minutes, so every timestamp
@@ -59,5 +59,45 @@ describe('interpolate', () => {
     expect(interpolate('Gratis di atas {free_shipping_min}', {})).toBe(
       'Gratis di atas {free_shipping_min}',
     );
+  });
+});
+
+// Brand copy that names the threshold is a promise about the checkout, so with
+// the offer switched off it is withheld rather than filled in: there is no
+// number to substitute, since zero reads as "free for everyone".
+describe('shippingCopy', () => {
+  const values = { free_shipping_min: 'Rp 150.000' };
+
+  it('substitutes the threshold while free shipping is on', () => {
+    expect(shippingCopy('Gratis ongkir di atas {free_shipping_min}.', values, true)).toBe(
+      'Gratis ongkir di atas Rp 150.000.',
+    );
+  });
+
+  it('withholds copy that advertises a threshold once the offer is off', () => {
+    expect(shippingCopy('Gratis ongkir di atas {free_shipping_min}.', values, false)).toBe('');
+  });
+
+  it('drops only the sentence that promises it, and keeps the rest', () => {
+    // The product page says where a parcel ships from, when it leaves, and
+    // what makes it free, all in one paragraph. Withholding the paragraph
+    // left the "Pengiriman" panel opening onto nothing.
+    const para =
+      'Dikirim dari Pekalongan via JNE. Pesanan sebelum 15.00 WIB diproses hari itu juga. ' +
+      'Gratis ongkir untuk belanja di atas {free_shipping_min}.';
+    expect(shippingCopy(para, values, false)).toBe(
+      'Dikirim dari Pekalongan via JNE. Pesanan sebelum 15.00 WIB diproses hari itu juga.',
+    );
+  });
+
+  it('keeps copy that says nothing about shipping, either way', () => {
+    const line = 'Dikirim dari Pekalongan via JNE.';
+    expect(shippingCopy(line, values, true)).toBe(line);
+    expect(shippingCopy(line, values, false)).toBe(line);
+  });
+
+  it('is empty for missing copy', () => {
+    expect(shippingCopy(undefined, values, false)).toBe('');
+    expect(shippingCopy(undefined, values, true)).toBe('');
   });
 });

@@ -45,7 +45,8 @@ export default function CheckoutRoute() {
 }
 
 function Checkout({ onPlaced }) {
-  const { couriers, paymentMethods, contactChannel, freeShippingMin, liveShipping } = useConfig();
+  const { couriers, paymentMethods, contactChannel, freeShipping, freeShippingMin, liveShipping } =
+    useConfig();
   const cart = useCart();
   const { lines, subtotal, isLoading, hasBlockers } = useCartLines();
   const navigate = useNavigate();
@@ -309,9 +310,10 @@ function Checkout({ onPlaced }) {
   // Under live rates the chosen quote is the estimate, and it is a real
   // quoted price rather than a mirror of a server rule — so the summary can
   // say so instead of hedging.
+  const free = { enabled: freeShipping, min: freeShippingMin };
   const estShipping = liveShipping
-    ? estimateShipping(subtotal, freeShippingMin, quote ? { cost: quote.cost } : null)
-    : estimateShipping(subtotal, freeShippingMin, couriers.find((c) => c.code === courier));
+    ? estimateShipping(subtotal, quote ? { cost: quote.cost } : null, free)
+    : estimateShipping(subtotal, couriers.find((c) => c.code === courier), free);
 
   return (
     <main
@@ -711,10 +713,16 @@ function SummaryRow({ label, value }) {
   );
 }
 
-/** Mirrors the server's rule so the estimate does not contradict the draft. */
-function estimateShipping(subtotal, freeMin, courier) {
+/**
+ * Mirrors the server's rule so the estimate does not contradict the draft.
+ *
+ * `free` is the whole offer -- `{ enabled, min }` -- because the threshold
+ * alone cannot express a shop that has withdrawn it: a min of zero means every
+ * order ships free, so "off" has to be its own flag on both sides of the wire.
+ */
+export function estimateShipping(subtotal, courier, free) {
   if (!courier) return 0;
-  return subtotal >= freeMin ? 0 : courier.cost;
+  return free.enabled && subtotal >= free.min ? 0 : courier.cost;
 }
 
 const LABELS = {

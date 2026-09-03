@@ -55,7 +55,7 @@ export default function ProductRoute() {
 }
 
 function ProductView({ product }) {
-  const { brand, freeShippingMinLabel } = useConfig();
+  const { brand, freeShipping, freeShippingMinLabel } = useConfig();
   const cart = useCart();
   const showToast = useToast();
   const navigate = useNavigate();
@@ -296,13 +296,25 @@ function ProductView({ product }) {
               <summary style={summary}>Cara perawatan</summary>
               <p style={detailsText}>{brand.productCareCopy}</p>
             </details>
-            <details style={{ padding: '14px 4px' }}>
-              <summary style={summary}>Pengiriman</summary>
-              <p style={detailsText}>{brand.productShippingCopy}</p>
-              <p style={{ ...detailsText, marginTop: 6 }}>
-                Gratis ongkir untuk belanja di atas {freeShippingMinLabel}.
-              </p>
-            </details>
+            {/* Both lines can be withheld at once -- a merchant whose shipping
+                copy says nothing but "gratis ongkir di atas ..." -- and a panel
+                that opens onto nothing is worse than no panel. */}
+            {(brand.productShippingCopy || freeShipping) && (
+              <details style={{ padding: '14px 4px' }}>
+                <summary style={summary}>Pengiriman</summary>
+                {brand.productShippingCopy && (
+                  <p style={detailsText}>{brand.productShippingCopy}</p>
+                )}
+                {/* Hardcoded rather than brand copy, so it needs its own gate:
+                    promising a threshold the checkout ignores is worse than
+                    saying nothing about shipping at all. */}
+                {freeShipping && (
+                  <p style={{ ...detailsText, marginTop: 6 }}>
+                    Gratis ongkir untuk belanja di atas {freeShippingMinLabel}.
+                  </p>
+                )}
+              </details>
+            )}
           </div>
         </div>
       </div>

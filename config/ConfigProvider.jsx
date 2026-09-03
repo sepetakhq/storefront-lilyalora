@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { getConfig } from '../api/endpoints.js';
 import { qk } from '../api/queryKeys.js';
-import { fmt, interpolate } from '../shared/format.js';
+import { fmt, shippingCopy } from '../shared/format.js';
 
 const ConfigContext = createContext(null);
 
@@ -45,6 +45,10 @@ function shape(raw) {
   const commerce = raw.commerce ?? {};
   const brand = raw.brand ?? {};
   const freeShippingMin = commerce.free_shipping_min ?? 0;
+  // The offer, not the threshold. No threshold can say "never" -- zero already
+  // means "always" -- so the flag is separate, and it is negative in the
+  // payload so that a config written before it existed still ships free.
+  const freeShipping = !commerce.free_shipping_disabled;
 
   // Every slice on brand comes from JSONB and arrives as null, not [], when
   // the tenant has not set it.
@@ -52,14 +56,17 @@ function shape(raw) {
     .map((n) => ({ ...n, path: ROUTE_PATHS[n.route] }))
     .filter((n) => n.path);
 
-  // Brand copy ships with literal {free_shipping_min} placeholders.
+  // Brand copy ships with literal {free_shipping_min} placeholders. With the
+  // offer switched off, copy that names one is withheld instead: it promises a
+  // discount the checkout would not give.
   const values = { free_shipping_min: fmt(freeShippingMin) };
-  const copy = (s) => interpolate(s, values);
+  const copy = (s) => shippingCopy(s, values, freeShipping);
 
   return {
     tenant: raw.tenant ?? {},
     contactChannel: raw.contact?.channel || 'email',
     payment: raw.payment ?? {},
+    freeShipping,
     freeShippingMin,
     freeShippingMinLabel: values.free_shipping_min,
     couriers: commerce.couriers ?? [],
@@ -72,7 +79,11 @@ function shape(raw) {
     brand: {
       ...brand,
       nav,
-      heroStats: (brand.hero_stats ?? []).map((s) => ({ ...s, label: copy(s.label) })),
+      // A stat whose label was withheld is dropped rather than rendered as a
+      // bare "Gratis" with nothing under it.
+      heroStats: (brand.hero_stats ?? [])
+        .map((s) => ({ ...s, label: copy(s.label) }))
+        .filter((s) => s.label),
       heroImages: brand.hero_images ?? [],
       sections: brand.section_copy ?? {},
       tagline: copy(brand.tagline),

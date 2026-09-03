@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { listPhrase, missingFields } from './CheckoutRoute.jsx';
+import { estimateShipping, listPhrase, missingFields } from './CheckoutRoute.jsx';
 
 const empty = { customer_name: '', contact: '', address: '', city: '' };
 const full = {
@@ -74,5 +74,34 @@ describe('listPhrase', () => {
     expect(listPhrase(['nama', 'kota'])).toBe('nama dan kota');
     expect(listPhrase(['kota'])).toBe('kota');
     expect(listPhrase([])).toBe('');
+  });
+});
+
+// The summary is only an estimate, but it has to mirror the server's rule --
+// the draft on the next screen is the one that charges, and a buyer who sees
+// "Gratis" and then pays 12000 has been told two different prices.
+describe('estimateShipping', () => {
+  const courier = { cost: 12000 };
+
+  it('waives the charge at the threshold', () => {
+    expect(estimateShipping(150000, courier, { enabled: true, min: 150000 })).toBe(0);
+  });
+
+  it('charges just below it', () => {
+    expect(estimateShipping(149999, courier, { enabled: true, min: 150000 })).toBe(12000);
+  });
+
+  it('charges at any subtotal once the offer is off', () => {
+    expect(estimateShipping(10000000, courier, { enabled: false, min: 150000 })).toBe(12000);
+  });
+
+  // A threshold of zero is the case a flag has to beat: it means every order
+  // ships free, so there is no number that could stand for "no offer".
+  it('charges with the offer off even where the threshold is zero', () => {
+    expect(estimateShipping(500000, courier, { enabled: false, min: 0 })).toBe(12000);
+  });
+
+  it('is zero before a courier is chosen', () => {
+    expect(estimateShipping(500000, null, { enabled: false, min: 150000 })).toBe(0);
   });
 });
