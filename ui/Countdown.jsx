@@ -10,7 +10,9 @@ import { fmtClock } from '../shared/format.js';
  */
 
 export function CountdownCells({ until, onExpire }) {
-  const { ms, active } = useCountdown(until, { onExpire });
+  // A DETIK cell is on screen for the whole campaign, however far out the end
+  // is, so this one never gets the relaxed cadence.
+  const { ms, active } = useCountdown(until, { onExpire, resolution: 'second' });
   if (!active) return null;
 
   const total = Math.floor(ms / 1000);
@@ -29,7 +31,8 @@ export function CountdownCells({ until, onExpire }) {
 
 /** mm:ss, for the OTP and payment deadlines. */
 export function CountdownClock({ until, onExpire, style }) {
-  const { ms, active } = useCountdown(until, { onExpire });
+  // fmtClock is m:ss at every magnitude — likewise always showing seconds.
+  const { ms, active } = useCountdown(until, { onExpire, resolution: 'second' });
   if (!active) return null;
   return <span style={{ fontVariantNumeric: 'tabular-nums', ...style }}>{fmtClock(ms)}</span>;
 }

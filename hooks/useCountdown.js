@@ -12,9 +12,13 @@ import { serverNow } from '../api/client.js';
  * instead of every product card on the page.
  *
  * @param {string|number|null} target  RFC3339 instant from the API
- * @param {{onExpire?: () => void}} [options]
+ * @param {{onExpire?: () => void, resolution?: 'second'|'adaptive'}} [options]
+ *   resolution says what the caller actually renders. 'second' ticks once a
+ *   second for the whole countdown; 'adaptive' (the default) relaxes the
+ *   cadence while the deadline is far off, and is only safe for a display
+ *   that stops showing seconds up there.
  */
-export function useCountdown(target, { onExpire } = {}) {
+export function useCountdown(target, { onExpire, resolution = 'adaptive' } = {}) {
   const targetMs = useRef(0);
   targetMs.current = target ? Date.parse(target) : 0;
 
@@ -49,14 +53,17 @@ export function useCountdown(target, { onExpire } = {}) {
       // Chained to the next boundary the display actually crosses rather than
       // a fixed interval, so the number never drifts or skips. The cadence
       // relaxes when nobody is watching individual seconds — a 30-minute draft
-      // countdown does not need 1800 renders.
-      const step = ms > 10 * 60_000 ? 30_000 : ms > 60_000 ? 10_000 : 1_000;
+      // countdown does not need 1800 renders — but a caller rendering a
+      // seconds cell is watching them the whole way down, and a relaxed step
+      // there leaves the number visibly frozen between jumps.
+      const step =
+        resolution === 'second' ? 1_000 : ms > 10 * 60_000 ? 30_000 : ms > 60_000 ? 10_000 : 1_000;
       timer = setTimeout(tick, Math.min(ms % step || step, ms));
     };
 
     tick();
     return () => clearTimeout(timer);
-  }, [target]);
+  }, [target, resolution]);
 
   return {
     ms: remaining,
