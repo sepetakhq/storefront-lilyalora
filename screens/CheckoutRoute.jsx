@@ -6,6 +6,7 @@ import { Img, SIZES } from '../ui/Img.jsx';
 import OtpModal from '../components/OtpModal.jsx';
 import DestinationPicker from '../components/DestinationPicker.jsx';
 import ShippingRates from '../components/ShippingRates.jsx';
+import { orderNote } from '../lib/preorder.js';
 import { destinationSummary } from '../lib/shipping.js';
 import { useCart } from '../cart/CartProvider.jsx';
 import { useCartLines } from '../cart/useCartLines.js';
@@ -48,7 +49,7 @@ function Checkout({ onPlaced }) {
   const { couriers, paymentMethods, contactChannel, freeShipping, freeShippingMin, liveShipping } =
     useConfig();
   const cart = useCart();
-  const { lines, subtotal, isLoading, hasBlockers } = useCartLines();
+  const { lines, subtotal, isLoading, hasBlockers, preorderLeadDays } = useCartLines();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -516,6 +517,15 @@ function Checkout({ onPlaced }) {
             berikutnya.
           </p>
 
+          {/* The wait, before the buyer commits to anything. Stated as a
+              duration because no money has moved yet -- the clock starts at
+              payment, so there is no date to give. */}
+          {preorderLeadDays ? (
+            <p style={{ fontSize: 12.5, fontWeight: 600, color: '#8A6D1F', margin: '10px 0 0' }}>
+              {orderNote(preorderLeadDays)}.
+            </p>
+          ) : null}
+
           {/* Below the button, not above it. A message above pushed "Buat
               pesanan" down by its own height the instant it appeared — out
               from under the cursor that had just clicked it, so an impatient
@@ -672,6 +682,14 @@ function Review({
             <span>Total</span>
             <span style={{ color: '#D26E8E' }}>{fmt(draft.total)}</span>
           </div>
+          {/* From the draft, not the cart: this is the number the buyer is
+              about to spend a verification code approving, and every other row
+              in this block comes from the same place. */}
+          {draft.preorder_lead_days > 0 ? (
+            <p style={{ fontSize: 12.5, fontWeight: 600, color: '#8A6D1F', margin: '12px 0 0' }}>
+              {orderNote(draft.preorder_lead_days)}.
+            </p>
+          ) : null}
         </div>
 
         <div style={{ marginTop: 16, fontSize: 13.5, color: '#8A7D70', lineHeight: 1.7 }}>

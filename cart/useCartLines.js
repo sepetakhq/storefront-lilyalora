@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 
+import { availableQty, cartLineStatus, leadDays } from '../lib/preorder.js';
 import { useProductsBySlug } from '../hooks/queries.js';
 import { useCart } from './CartProvider.jsx';
 
@@ -21,13 +22,9 @@ export function useCartLines() {
       const q = results[i];
       const product = q?.data;
 
-      let status = 'ok';
-      if (q?.isPending) status = 'loading';
-      // A 404 means unpublished or deleted — the product is gone, not broken.
-      else if (q?.error?.status === 404) status = 'gone';
-      else if (q?.isError) status = 'error';
-      else if (product?.sold_out || product?.stock <= 0) status = 'soldout';
-      else if (item.qty > product?.stock) status = 'overstock';
+      // Both stock rungs of this ladder are skipped for a made-to-order
+      // product; see src/lib/preorder.js, where the rule is tested.
+      const status = cartLineStatus(item, product, q);
 
       return {
         item,
@@ -35,7 +32,9 @@ export function useCartLines() {
         status,
         error: q?.error ?? null,
         refetch: q?.refetch,
-        available: product?.stock ?? 0,
+        available: availableQty(product),
+        preorder: Boolean(product?.preorder),
+        leadDays: leadDays(product),
         lineTotal: product ? product.price * item.qty : 0,
       };
     });
@@ -44,6 +43,9 @@ export function useCartLines() {
     return {
       lines,
       subtotal: priced.reduce((sum, l) => sum + l.lineTotal, 0),
+      // The whole cart waits for its slowest pre-order line, because it ships
+      // once. Advisory like the subtotal above it: the draft is authoritative.
+      preorderLeadDays: lines.reduce((max, l) => (l.preorder && l.leadDays > max ? l.leadDays : max), 0),
       isLoading: lines.some((l) => l.status === 'loading'),
       // Anything that would make the draft fail outright.
       hasBlockers: lines.some((l) => l.status === 'gone' || l.status === 'soldout'),

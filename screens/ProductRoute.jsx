@@ -5,7 +5,8 @@ import ProductCard from '../components/ProductCard.jsx';
 import { Img, SIZES } from '../ui/Img.jsx';
 import { EmptyState, ErrorState, Skeleton } from '../ui/states.jsx';
 import { useProduct } from '../hooks/queries.js';
-import { useCart, MAX_QTY } from '../cart/CartProvider.jsx';
+import { useCart } from '../cart/CartProvider.jsx';
+import { isSoldOut, leadDays, maxQty, stockNote } from '../lib/preorder.js';
 import { useConfig } from '../config/ConfigProvider.jsx';
 import { useToast } from '../ui/ToastProvider.jsx';
 import { fmt } from '../shared/format.js';
@@ -13,12 +14,6 @@ import { fmt } from '../shared/format.js';
 const detailsRow = { borderBottom: '1px solid #F0E4CF', padding: '14px 4px' };
 const summary = { fontWeight: 700, cursor: 'pointer', fontSize: 14.5 };
 const detailsText = { color: '#8A7D70', fontSize: 14, lineHeight: 1.7, margin: '10px 0 0' };
-
-function stockNote(stock) {
-  if (stock <= 0) return { text: 'Stok habis — segera restock!', color: '#C05C7E' };
-  if (stock < 10) return { text: `Sisa ${stock} pcs — jangan sampai kehabisan`, color: '#C08A2D' };
-  return { text: `Stok tersedia (${stock} pcs)`, color: '#3E7D4E' };
-}
 
 export default function ProductRoute() {
   const { slug } = useParams();
@@ -76,9 +71,11 @@ function ProductView({ product }) {
   const gallery = images.length ? images : all.slice(0, 1);
   const main = gallery[Math.min(active, gallery.length - 1)];
 
-  const stock = stockNote(product.stock);
-  const soldOut = product.sold_out || product.stock <= 0;
-  const max = Math.min(MAX_QTY, Math.max(1, product.stock));
+  const stock = stockNote(product);
+  // The server already accounts for pre-order in sold_out, and re-deriving it
+  // from stock here is what used to refuse a made-to-order product.
+  const soldOut = isSoldOut(product);
+  const max = maxQty(product);
 
   const add = (then) => {
     cart.add(product, qty);
@@ -197,6 +194,22 @@ function ProductView({ product }) {
                 </span>
               </>
             ) : null}
+            {product.preorder ? (
+              // Tinted like the sale chip beside it, in gold rather than pink:
+              // same weight of statement, different kind of claim.
+              <span
+                style={{
+                  background: '#FDF6E3',
+                  color: '#8A6D1F',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  borderRadius: 999,
+                  padding: '4px 10px',
+                }}
+              >
+                PRE-ORDER
+              </span>
+            ) : null}
           </div>
 
           <p style={{ color: '#8A7D70', fontSize: 15.5, lineHeight: 1.7, margin: '0 0 20px' }}>
@@ -299,9 +312,18 @@ function ProductView({ product }) {
             {/* Both lines can be withheld at once -- a merchant whose shipping
                 copy says nothing but "gratis ongkir di atas ..." -- and a panel
                 that opens onto nothing is worse than no panel. */}
-            {(brand.productShippingCopy || freeShipping) && (
+            {(brand.productShippingCopy || freeShipping || product.preorder) && (
               <details style={{ padding: '14px 4px' }}>
                 <summary style={summary}>Pengiriman</summary>
+                {/* First, because it changes what every line below it means:
+                    the courier only starts counting once the item exists. */}
+                {product.preorder && (
+                  <p style={{ ...detailsText, color: '#8A6D1F', fontWeight: 600 }}>
+                    {leadDays(product)
+                      ? `Produk ini dibuat setelah pesanan dibayar. Perkiraan siap kirim ±${leadDays(product)} hari sejak pembayaran diterima, lalu dikirim seperti biasa.`
+                      : 'Produk ini dibuat setelah pesanan dibayar, lalu dikirim seperti biasa.'}
+                  </p>
+                )}
                 {brand.productShippingCopy && (
                   <p style={detailsText}>{brand.productShippingCopy}</p>
                 )}

@@ -9,7 +9,7 @@ import { EmptyState, ErrorState, Skeleton } from '../ui/states.jsx';
 import { useOrder } from '../hooks/queries.js';
 import { useConfig } from '../config/ConfigProvider.jsx';
 import { serverNow } from '../api/client.js';
-import { fmt, fmtDateTime } from '../shared/format.js';
+import { fmt, fmtDate, fmtDateTime } from '../shared/format.js';
 import { reopenPayment } from '../api/endpoints.js';
 import { qk } from '../api/queryKeys.js';
 import {
@@ -104,9 +104,20 @@ export default function OrderRoute() {
         </h1>
         <StatusPill status={order.status} label={order.status_label} />
       </div>
-      <p style={{ color: '#8A7D70', fontSize: 13.5, margin: '6px 0 24px' }}>
+      <p style={{ color: '#8A7D70', fontSize: 13.5, margin: '6px 0 0' }}>
         Dipesan {fmtDateTime(order.placed_at)} · {order.customer_name} · {order.city}
       </p>
+      {/* The one place a real date appears, because it is the one place the
+          server has frozen one. Before payment there is only a duration: the
+          clock starts when the money lands. */}
+      {order.preorder_lead_days > 0 ? (
+        <p style={{ color: '#8A6D1F', fontSize: 13.5, fontWeight: 600, margin: '6px 0 0' }}>
+          {order.preorder_ship_estimate
+            ? `Perkiraan siap kirim: ${fmtDate(order.preorder_ship_estimate)}`
+            : `Pesanan pre-order · perkiraan siap kirim ±${order.preorder_lead_days} hari setelah pembayaran diterima`}
+        </p>
+      ) : null}
+      <div style={{ height: 24 }} />
 
       {awaiting ? (
         <PaymentPanel
@@ -595,7 +606,12 @@ function Timeline({ order }) {
       {terminal ? (
         <p style={{ fontSize: 14, color: '#8A7D70', lineHeight: 1.7, margin: '0 0 18px' }}>
           {order.status === 'expired'
-            ? 'Pesanan ini kedaluwarsa karena pembayaran tidak masuk tepat waktu. Stoknya sudah dikembalikan.'
+            ? // The restock sentence is only true of lines that reserved
+              // stock. An all-pre-order order returned nothing, because it
+              // never took anything.
+              order.lines?.every((l) => l.preorder)
+              ? 'Pesanan ini kedaluwarsa karena pembayaran tidak masuk tepat waktu.'
+              : 'Pesanan ini kedaluwarsa karena pembayaran tidak masuk tepat waktu. Stoknya sudah dikembalikan.'
             : 'Pesanan ini dibatalkan.'}
         </p>
       ) : null}

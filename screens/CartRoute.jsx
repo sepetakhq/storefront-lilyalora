@@ -5,13 +5,14 @@ import { EmptyState, InlineError, Skeleton } from '../ui/states.jsx';
 import { useCart, MAX_QTY } from '../cart/CartProvider.jsx';
 import { useCartLines } from '../cart/useCartLines.js';
 import { useConfig } from '../config/ConfigProvider.jsx';
+import { orderNote, shortNote } from '../lib/preorder.js';
 import { didPurgeLegacy } from '../lib/storage.js';
 import { fmt } from '../shared/format.js';
 
 export default function CartRoute() {
   const { freeShipping, freeShippingMin } = useConfig();
   const cart = useCart();
-  const { lines, subtotal, isLoading, hasBlockers } = useCartLines();
+  const { lines, subtotal, isLoading, hasBlockers, preorderLeadDays } = useCartLines();
 
   if (cart.isEmpty) {
     return (
@@ -99,6 +100,15 @@ export default function CartRoute() {
           Total akhir, ongkir, dan diskon dihitung di langkah berikutnya.
         </p>
 
+        {/* Before the checkout button, not after: the wait is part of what the
+            buyer is agreeing to, and one order ships once so the slowest line
+            sets it. */}
+        {preorderLeadDays ? (
+          <p style={{ fontSize: 12.5, fontWeight: 600, color: '#8A6D1F', margin: 0 }}>
+            {orderNote(preorderLeadDays)}.
+          </p>
+        ) : null}
+
         {hasBlockers ? (
           <div
             role="alert"
@@ -145,7 +155,7 @@ export default function CartRoute() {
 }
 
 function CartLine({ line, onQty, onRemove }) {
-  const { item, product, status, error, refetch, available } = line;
+  const { item, product, status, error, refetch, available, preorder } = line;
   const remove = () => onRemove(item.productId);
 
   if (status === 'loading') {
@@ -225,6 +235,10 @@ function CartLine({ line, onQty, onRemove }) {
             >
               Sesuaikan
             </button>
+          </div>
+        ) : preorder ? (
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#8A6D1F', marginTop: 8 }}>
+            {shortNote(product)}
           </div>
         ) : null}
       </div>

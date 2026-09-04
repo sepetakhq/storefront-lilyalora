@@ -68,6 +68,29 @@ const badgeStyle = {
 };
 
 /**
+ * The pre-order chip: same geometry as the promotion badge, opposite corner,
+ * different tone.
+ *
+ * Two slots rather than one, because a discounted pre-order is an ordinary
+ * thing and multiplexing would drop whichever label lost. Butter and gold
+ * rather than the badge's pink: in this palette pink persuades (badges,
+ * buttons, sale prices) and gold informs (the category eyebrow above every
+ * product name). A delivery window is a fact, not an offer, so it takes the
+ * informational tone and stays quieter than the discount beside it.
+ *
+ * Shown in every variant, including `related`, whose showBadge:false withholds
+ * marketing — a buyer arriving from "Kamu mungkin suka" is owed this before
+ * they add to cart, not after.
+ */
+const preorderBadgeStyle = {
+  ...badgeStyle,
+  left: 'auto',
+  right: 12,
+  background: '#F5E6AE',
+  color: '#8A6D1F',
+};
+
+/**
  * `p` is the API's productCard DTO, consumed directly.
  *
  * The prototype mapped it through a client-side view model that recomputed
@@ -110,6 +133,7 @@ export default function ProductCard({ p, variant = 'grid', showSoldOut = false, 
           priority={priority}
         />
         {withBadge && <span style={badgeStyle}>{p.badge}</span>}
+        {p.preorder && <span style={preorderBadgeStyle}>PRE-ORDER</span>}
         {showSoldOut && p.sold_out && (
           <span
             style={{
