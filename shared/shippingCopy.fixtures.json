@@ -1,0 +1,122 @@
+{
+  "_comment": [
+    "The cross-language contract for brand-copy rendering.",
+    "",
+    "src/shared/format.js and backend/internal/seo/copy.go must agree byte for",
+    "byte: the storefront substitutes these placeholders on the client, and the",
+    "server now substitutes them again when it composes meta tags for crawlers",
+    "that never run the client. Two implementations of one rule is a drift",
+    "hazard, and this file is the thing that makes the drift fail a test instead",
+    "of showing up in someone's WhatsApp preview.",
+    "",
+    "Read by src/shared/format.test.js and backend/internal/seo/copy_test.go.",
+    "Add a case here first, then make both sides pass it."
+  ],
+
+  "values": { "free_shipping_min": "Rp 250.000" },
+
+  "shippingCopy": [
+    {
+      "name": "copy that never mentions shipping is untouched, offer on",
+      "text": "Hijab premium dari Kota Pekalongan.",
+      "freeShipping": true,
+      "want": "Hijab premium dari Kota Pekalongan."
+    },
+    {
+      "name": "copy that never mentions shipping is untouched, offer off",
+      "text": "Hijab premium dari Kota Pekalongan.",
+      "freeShipping": false,
+      "want": "Hijab premium dari Kota Pekalongan."
+    },
+    {
+      "name": "the threshold is substituted while the offer stands",
+      "text": "Gratis ongkir di atas {free_shipping_min}.",
+      "freeShipping": true,
+      "want": "Gratis ongkir di atas Rp 250.000."
+    },
+    {
+      "name": "the only sentence is withheld once the offer is off",
+      "text": "Gratis ongkir di atas {free_shipping_min}.",
+      "freeShipping": false,
+      "want": ""
+    },
+    {
+      "name": "a promise with no terminator is still withheld",
+      "text": "Gratis ongkir {free_shipping_min}",
+      "freeShipping": false,
+      "want": ""
+    },
+    {
+      "name": "hero stat label, offer on",
+      "text": "Ongkir min {free_shipping_min}",
+      "freeShipping": true,
+      "want": "Ongkir min Rp 250.000"
+    },
+    {
+      "name": "the seeded shipping paragraph keeps couriers and cut-off, drops the promise",
+      "text": "Dikirim dari Pekalongan via JNE / J&T / SiCepat. Pesanan sebelum 15.00 WIB diproses di hari yang sama. Gratis ongkir untuk belanja di atas {free_shipping_min}.",
+      "freeShipping": false,
+      "want": "Dikirim dari Pekalongan via JNE / J&T / SiCepat. Pesanan sebelum 15.00 WIB diproses di hari yang sama."
+    },
+    {
+      "name": "the same paragraph is whole while the offer stands",
+      "text": "Dikirim dari Pekalongan via JNE / J&T / SiCepat. Pesanan sebelum 15.00 WIB diproses di hari yang sama. Gratis ongkir untuk belanja di atas {free_shipping_min}.",
+      "freeShipping": true,
+      "want": "Dikirim dari Pekalongan via JNE / J&T / SiCepat. Pesanan sebelum 15.00 WIB diproses di hari yang sama. Gratis ongkir untuk belanja di atas Rp 250.000."
+    },
+    {
+      "name": "an unknown placeholder is left visible rather than blanked",
+      "text": "Dikirim dari {kota_asal} setiap hari.",
+      "freeShipping": true,
+      "want": "Dikirim dari {kota_asal} setiap hari."
+    },
+    {
+      "name": "an unknown placeholder survives the sentence filter too",
+      "text": "Dikirim dari {kota_asal}. Gratis ongkir di atas {free_shipping_min}.",
+      "freeShipping": false,
+      "want": "Dikirim dari {kota_asal}."
+    },
+    {
+      "name": "a lone brace is not a placeholder",
+      "text": "Ukuran 110 x 110 cm {approx}.",
+      "freeShipping": true,
+      "want": "Ukuran 110 x 110 cm {approx}."
+    },
+    {
+      "name": "empty copy stays empty",
+      "text": "",
+      "freeShipping": true,
+      "want": ""
+    },
+    {
+      "name": "empty copy stays empty with the offer off",
+      "text": "",
+      "freeShipping": false,
+      "want": ""
+    },
+    {
+      "name": "a question mark ends a sentence like a full stop",
+      "text": "Mau gratis ongkir? Belanja di atas {free_shipping_min}!",
+      "freeShipping": false,
+      "want": "Mau gratis ongkir?"
+    },
+    {
+      "name": "the promise can come first",
+      "text": "Gratis ongkir di atas {free_shipping_min}. Dikirim dari Pekalongan.",
+      "freeShipping": false,
+      "want": "Dikirim dari Pekalongan."
+    }
+  ],
+
+  "rupiah": [
+    { "n": 0, "want": "Rp 0" },
+    { "n": 1, "want": "Rp 1" },
+    { "n": 999, "want": "Rp 999" },
+    { "n": 1000, "want": "Rp 1.000" },
+    { "n": 79000, "want": "Rp 79.000" },
+    { "n": 250000, "want": "Rp 250.000" },
+    { "n": 1000000, "want": "Rp 1.000.000" },
+    { "n": 1234567890, "want": "Rp 1.234.567.890" },
+    { "n": -79000, "want": "Rp -79.000" }
+  ]
+}

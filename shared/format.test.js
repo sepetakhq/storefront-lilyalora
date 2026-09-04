@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
-import { fmtClock, fmtDate, fmtDateTime, fmtTime, interpolate, shippingCopy } from './format.js';
+import fixtures from './shippingCopy.fixtures.json';
+import {
+  fmt,
+  fmtClock,
+  fmtDate,
+  fmtDateTime,
+  fmtTime,
+  interpolate,
+  shippingCopy,
+} from './format.js';
 
 // The clock is written by hand rather than by Intl, and the reason is the
 // whole test: `id-ID` puts a dot between hours and minutes, so every timestamp
@@ -99,5 +108,24 @@ describe('shippingCopy', () => {
   it('is empty for missing copy', () => {
     expect(shippingCopy(undefined, values, false)).toBe('');
     expect(shippingCopy(undefined, values, true)).toBe('');
+  });
+});
+
+// The server composes meta tags for crawlers that never run this code, so
+// backend/internal/seo/copy.go is a second implementation of the rules above.
+// Both sides read this file. A change to either that is not a change to both
+// fails here and in backend/internal/seo/copy_test.go, instead of surfacing as
+// a WhatsApp preview promising free shipping the checkout refuses.
+describe('the shared contract with backend/internal/seo/copy.go', () => {
+  it('renders every fixture the way the Go port does', () => {
+    for (const tc of fixtures.shippingCopy) {
+      expect(shippingCopy(tc.text, fixtures.values, tc.freeShipping), tc.name).toBe(tc.want);
+    }
+  });
+
+  it('formats rupiah the way the Go port does', () => {
+    for (const tc of fixtures.rupiah) {
+      expect(fmt(tc.n), `Rupiah(${tc.n})`).toBe(tc.want);
+    }
   });
 });

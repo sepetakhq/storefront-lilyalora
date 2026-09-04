@@ -7,7 +7,10 @@ import Toast from './components/Toast.jsx';
 import { ConfigProvider } from './config/ConfigProvider.jsx';
 import { CartProvider } from './cart/CartProvider.jsx';
 import { ToastProvider } from './ui/ToastProvider.jsx';
-import { useHome } from './hooks/queries.js';
+import { useHome, useProduct } from './hooks/queries.js';
+import { useConfig } from './config/ConfigProvider.jsx';
+import { useDocumentTitle } from './hooks/useDocumentTitle.js';
+import { pageName, pageTitle } from './lib/seo.js';
 import { ErrorState } from './ui/states.jsx';
 
 const MOBILE_MAX = 820;
@@ -36,6 +39,7 @@ function Shell() {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <ScrollRestoration />
+      <DocumentTitle />
       <Announcement />
       <Header
         isMobile={isMobile}
@@ -88,6 +92,34 @@ function useIsMobile() {
     return () => window.removeEventListener('resize', onResize);
   }, []);
   return isMobile;
+}
+
+/**
+ * Keeps the tab title in step as the buyer moves around.
+ *
+ * Renders nothing. The server already wrote the head of the document this page
+ * arrived as, including its title; an SPA navigation never re-fetches that, so
+ * the tab would otherwise be stuck on whichever page was loaded first.
+ *
+ * The product name comes from useProduct, which shares a cache entry with
+ * ProductRoute's own call -- same query key, so this costs no extra request. It
+ * resolves after the route renders, and until it does pageName returns '' and
+ * the hook leaves the server's title alone.
+ */
+function DocumentTitle() {
+  const { pathname } = useLocation();
+  const { brand, tenant } = useConfig();
+
+  const slug = pathname.startsWith('/produk/') ? pathname.slice('/produk/'.length) : '';
+  const { data: product } = useProduct(slug);
+
+  const brandName =
+    [brand?.wordmark_primary, brand?.wordmark_accent].filter(Boolean).join(' ') || tenant?.name || '';
+
+  useDocumentTitle(
+    pageTitle(pageName(pathname, { product, taglineShort: brand?.tagline_short }), brandName),
+  );
+  return null;
 }
 
 /** Shown while the tenant's brand identity loads — the whole shell depends on it. */
