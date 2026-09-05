@@ -85,6 +85,134 @@ describe('PaymentPanel renders every kind the backend can emit', () => {
 
     expect(screen.queryByText(DEAD_END)).toBeNull();
   });
+
+  it("manual_transfer: shows the shop's own account, not a Virtual Account", () => {
+    panel({
+      kind: 'manual_transfer',
+      method: 'MANUAL_BCA',
+      amount: 75137,
+      manual_bank: 'BCA',
+      manual_account_number: '1234567890',
+      manual_account_holder: 'Lily Alora',
+    });
+
+    expect(screen.getByText('1234567890')).toBeTruthy();
+    expect(screen.getByText('Lily Alora')).toBeTruthy();
+    // The wording matters as much as the number. A fixed account the shop owns
+    // is not a Virtual Account issued per order, and telling a buyer it is
+    // sends them to their bank asking why the account rejects them.
+    expect(screen.getByText(/Transfer ke rekening BCA/)).toBeTruthy();
+    expect(screen.queryByText(/Virtual Account/)).toBeNull();
+    expect(screen.queryByText(DEAD_END)).toBeNull();
+  });
+
+  it("manual_qris: shows the shop's own code and says the amount is typed", () => {
+    panel({
+      kind: 'manual_qris',
+      method: 'MANUAL_QRIS',
+      amount: 75137,
+      manual_qr_image_url: 'https://cdn.test/t/alpha/products/qris.png',
+    });
+
+    expect(screen.getByAltText(/Kode QRIS/i)).toBeTruthy();
+    // The one thing a gateway QRIS never has to say: a static code carries no
+    // amount, so the buyer types it and it has to be exact.
+    expect(screen.getByText(/Nominalnya diisi sendiri/)).toBeTruthy();
+    expect(screen.queryByText(DEAD_END)).toBeNull();
+  });
+});
+
+// The three digits that make a bank transfer identifiable. Rendered wrong, the
+// buyer sends a round number and the shop gets a credit matching nothing.
+describe('PaymentPanel and the unique code', () => {
+  const manual = {
+    kind: 'manual_transfer',
+    method: 'MANUAL_BCA',
+    amount: 75137,
+    manual_bank: 'BCA',
+    manual_account_number: '1234567890',
+    manual_account_holder: 'Lily Alora',
+  };
+
+  it('marks the code inside the amount and explains it', () => {
+    render(
+      <PaymentPanel order={{ ...order, unique_code: 137 }} payment={manual} onRefresh={() => {}} />,
+    );
+
+    // Twice, and deliberately: once marked inside the amount, where the
+    // mistake gets made, and once in the sentence that says why it matters.
+    // Either alone leaves a buyer who reads only one of them.
+    expect(screen.getAllByText('137')).toHaveLength(2);
+    expect(screen.getByText(/Transfer tepat sampai/)).toBeTruthy();
+  });
+
+  it('leaves a gateway amount as one unbroken number', () => {
+    render(
+      <PaymentPanel
+        order={order}
+        payment={{ kind: 'va', method: 'BCA', amount: 75000, va_bank: 'BCA', va_number: '8808123' }}
+        onRefresh={() => {}}
+      />,
+    );
+
+    expect(screen.getByText('Rp 75.000')).toBeTruthy();
+  });
+});
+
+// A manual payment produces no callback, so this button is the only signal the
+// shop ever gets. It has to appear exactly where the server would accept it.
+describe('PaymentPanel and the claim', () => {
+  const manual = {
+    kind: 'manual_transfer',
+    method: 'MANUAL_BCA',
+    amount: 75137,
+    manual_bank: 'BCA',
+    manual_account_number: '1234567890',
+    manual_account_holder: 'Lily Alora',
+  };
+
+  it('offers the button on an unclaimed manual order', () => {
+    const onClaim = vi.fn();
+    render(
+      <PaymentPanel
+        order={{ ...order, unique_code: 137 }}
+        payment={manual}
+        onRefresh={() => {}}
+        onClaim={onClaim}
+      />,
+    );
+
+    fireEvent.click(screen.getByText('Saya sudah bayar'));
+    expect(onClaim).toHaveBeenCalled();
+  });
+
+  it('replaces it with the waiting state once claimed', () => {
+    render(
+      <PaymentPanel
+        order={{ ...order, unique_code: 137, buyer_claimed_at: new Date().toISOString() }}
+        payment={manual}
+        onRefresh={() => {}}
+        onClaim={() => {}}
+      />,
+    );
+
+    expect(screen.getByText('Menunggu konfirmasi penjual')).toBeTruthy();
+    // Pressing it again does nothing the server would accept, so it is gone.
+    expect(screen.queryByText('Saya sudah bayar')).toBeNull();
+  });
+
+  it('never offers it on a gateway order, where nobody has to be told', () => {
+    render(
+      <PaymentPanel
+        order={order}
+        payment={{ kind: 'va', method: 'BCA', amount: 75000, va_bank: 'BCA', va_number: '8808123' }}
+        onRefresh={() => {}}
+        onClaim={() => {}}
+      />,
+    );
+
+    expect(screen.queryByText('Saya sudah bayar')).toBeNull();
+  });
 });
 
 // The cases where the dead end is correct. Showing a code that scans and does

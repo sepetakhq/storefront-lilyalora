@@ -10,14 +10,18 @@ import { useOrder } from '../hooks/queries.js';
 import { useConfig } from '../config/ConfigProvider.jsx';
 import { serverNow } from '../api/client.js';
 import { fmt, fmtDate, fmtDateTime } from '../shared/format.js';
-import { reopenPayment } from '../api/endpoints.js';
+import { claimPayment, reopenPayment } from '../api/endpoints.js';
 import { qk } from '../api/queryKeys.js';
 import {
   PAY_DEAD,
+  canClaimPayment,
+  isDisplayableImageURL,
+  isManualPayment,
   isQrImageURL,
   isQrisPayload,
   isUsableRedirect,
   paymentState,
+  splitUniqueCode,
 } from '../lib/payment.js';
 import { useToast } from '../ui/ToastProvider.jsx';
 
@@ -56,6 +60,21 @@ export default function OrderRoute() {
     // Every refusal the server can give means the page is looking at stale
     // state — already paid, already expired, order moved on. Re-read rather
     // than guess which.
+    onError: (err) => {
+      if (err?.status === 409) refetch();
+    },
+  });
+
+  // The claim writes the whole pair back, not half of it: what changes is the
+  // order — its claim time and its deadline — and patching only the payment
+  // would leave the panel still offering the button it just consumed.
+  const claim = useMutation({
+    mutationFn: () => claimPayment(token),
+    onSuccess: (next) => {
+      if (next?.order) queryClient.setQueryData(qk.track(token), next);
+    },
+    // Every refusal means this page is looking at stale state: already paid,
+    // already expired, or moved on by the shop. Re-read rather than guess.
     onError: (err) => {
       if (err?.status === 409) refetch();
     },
@@ -127,6 +146,9 @@ export default function OrderRoute() {
           onRetry={retry.mutate}
           retrying={retry.isPending}
           retryError={retry.error}
+          onClaim={claim.mutate}
+          claiming={claim.isPending}
+          claimError={claim.error}
         />
       ) : null}
 
@@ -194,6 +216,16 @@ export default function OrderRoute() {
           {order.payment_fee > 0 ? (
             <Row label="Biaya admin" value={fmt(order.payment_fee)} />
           ) : null}
+          {/*
+            Its own row, because without it the parts do not reach the total
+            and the footer reads as an arithmetic error. Named rather than
+            folded into the price: these three rupiah are what tell the shop
+            which transfer was yours, and a buyer who understands that is a
+            buyer who does not round them off.
+          */}
+          {order.unique_code > 0 ? (
+            <Row label="Kode unik" value={fmt(order.unique_code)} />
+          ) : null}
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 17, fontWeight: 700 }}>
             <span>Total</span>
             <span style={{ color: '#D26E8E' }}>{fmt(order.total)}</span>
@@ -220,7 +252,17 @@ export default function OrderRoute() {
 // every kind the backend can emit renders something a buyer can act on. That
 // seam is where a URL stored as a QR payload went unnoticed: both sides were
 // correct on their own terms and only disagreed when rendered.
-export function PaymentPanel({ order, payment, onRefresh, onRetry, retrying, retryError }) {
+export function PaymentPanel({
+  order,
+  payment,
+  onRefresh,
+  onRetry,
+  retrying,
+  retryError,
+  onClaim,
+  claiming,
+  claimError,
+}) {
   const { brand, payment: payConfig } = useConfig();
   const showToast = useToast();
   const [pastDeadline, setPastDeadline] = useState(
@@ -282,9 +324,7 @@ export function PaymentPanel({ order, payment, onRefresh, onRetry, retrying, ret
         ) : null}
       </div>
 
-      <div style={{ fontSize: 26, fontWeight: 700, color: '#D26E8E', margin: '10px 0 18px' }}>
-        {fmt(payment.amount)}
-      </div>
+      <PayableAmount amount={payment.amount} uniqueCode={order.unique_code} onCopy={copy} />
 
       {/* Branch on `kind`, never on `method`: the gateway decides which fields
           it populates, and a method can change kind under us. */}
@@ -329,6 +369,20 @@ export function PaymentPanel({ order, payment, onRefresh, onRetry, retrying, ret
         <QrImageBlock url={payment.qr_image_url} config={payConfig} brand={brand} />
       ) : payment.kind === 'redirect' ? (
         <RedirectBlock url={payment.redirect_url} order={order} brand={brand} />
+      ) : payment.kind === 'manual_transfer' ? (
+        <ManualTransferBlock payment={payment} brand={brand} onCopy={copy} />
+      ) : payment.kind === 'manual_qris' ? (
+        <ManualQrisBlock payment={payment} brand={brand} />
+      ) : null}
+
+      {isManualPayment(payment) ? (
+        <ManualClaim
+          order={order}
+          onClaim={onClaim}
+          claiming={claiming}
+          claimError={claimError}
+          canClaim={canClaimPayment(order, payment)}
+        />
       ) : null}
 
       <div style={{ borderTop: '1px solid #F0E4CF', marginTop: 18, paddingTop: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -537,6 +591,269 @@ function QrisBlock({ payload, config, brand }) {
  * a routing decision that can change between one order and the next, and a
  * payment page that visibly changed shape with it would read as a fault.
  */
+/**
+ * The amount, which on a manual order is also the reference.
+ *
+ * A bank credit carries a name, a time and an amount and nothing else, so the
+ * last three digits are the only thing tying one to this order. A buyer who
+ * rounds them off leaves the shop a payment matching nothing — which is why
+ * they are marked in the number itself rather than only explained underneath,
+ * and why the whole amount can be copied: typing it is where the mistake
+ * happens.
+ *
+ * A gateway amount renders exactly as it did before, one unbroken number.
+ */
+function PayableAmount({ amount, uniqueCode, onCopy }) {
+  const text = fmt(amount);
+  const split = splitUniqueCode(text, uniqueCode);
+
+  if (!split) {
+    return (
+      <div style={{ fontSize: 26, fontWeight: 700, color: '#D26E8E', margin: '10px 0 18px' }}>
+        {text}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ margin: '10px 0 18px' }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'baseline',
+          gap: 10,
+          flexWrap: 'wrap',
+          fontSize: 26,
+          fontWeight: 700,
+          color: '#D26E8E',
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
+        <span>
+          {split.head}
+          <span
+            style={{
+              // Underlined rather than recoloured: the three digits are part
+              // of the amount, not a separate charge, and giving them their
+              // own colour would read as a second number to be paid.
+              borderBottom: '2px solid #E8A0BC',
+              paddingBottom: 1,
+            }}
+          >
+            {split.code}
+          </span>
+        </span>
+        <button
+          type="button"
+          onClick={() => onCopy(String(amount), 'Nominal')}
+          style={{ color: '#B4557A', fontWeight: 700, fontSize: 13.5 }}
+        >
+          Salin nominal
+        </button>
+      </div>
+      <p style={{ fontSize: 13, color: '#8A7D70', lineHeight: 1.7, margin: '8px 0 0' }}>
+        Transfer tepat sampai <strong style={{ color: '#43382E' }}>{split.code}</strong> di
+        belakang. Tiga angka itu yang menandai pesananmu — tanpa itu, penjual tidak tahu
+        pembayaran ini milik siapa.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * The shop's own bank account.
+ *
+ * Deliberately not the VA block with different copy. A Virtual Account is
+ * issued for one order and expires with it; this is one fixed account number
+ * shared by every order the shop has ever taken, which is why the amount
+ * carries a code and why a person has to confirm it. Telling a buyer to
+ * "Transfer ke Virtual Account" a number that is nothing of the sort is how
+ * they end up asking their bank why the account rejects them.
+ */
+function ManualTransferBlock({ payment, brand, onCopy }) {
+  const number = payment.manual_account_number;
+  if (!number) {
+    // Reachable only if the shop cleared their account between the charge
+    // opening and this render. Nothing to pay to, so say so rather than draw
+    // an empty plate.
+    return <ManualUnset brand={brand} />;
+  }
+
+  return (
+    <div>
+      <div style={{ fontSize: 13, color: '#8A7D70' }}>
+        Transfer ke rekening {payment.manual_bank}
+      </div>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 12,
+          background: '#FDF6E3',
+          border: '1px solid #F0E4CF',
+          borderRadius: 14,
+          padding: '14px 16px',
+          marginTop: 8,
+        }}
+      >
+        <strong style={{ fontSize: 19, letterSpacing: '0.06em', fontVariantNumeric: 'tabular-nums' }}>
+          {number}
+        </strong>
+        <button
+          type="button"
+          onClick={() => onCopy(number, 'Nomor rekening')}
+          style={{ color: '#B4557A', fontWeight: 700, fontSize: 13.5 }}
+        >
+          Salin
+        </button>
+      </div>
+      {payment.manual_account_holder ? (
+        // "a.n." is added here, unlike the VA block's account_holder, because
+        // this is a bare name from the shop's settings rather than a line the
+        // merchant wrote in full.
+        <div style={{ fontSize: 13, color: '#8A7D70', marginTop: 10 }}>
+          a.n. <strong style={{ color: '#43382E' }}>{payment.manual_account_holder}</strong>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * The shop's own printed QRIS.
+ *
+ * The image is the original object, never a rendition: the pipeline writes
+ * lossy WebP at three widths, and a downscaled, re-compressed QR is a QR that
+ * may not scan. That is the documented exception to the srcset rule.
+ *
+ * The sidebar says what a gateway QRIS never has to: a static code carries no
+ * amount, so the buyer types it, and it has to be exact.
+ */
+function ManualQrisBlock({ payment, brand }) {
+  const url = payment.manual_qr_image_url;
+  // isDisplayableImageURL, not isQrImageURL: this URL was composed by our own
+  // server from a storage key, so the only thing that can break is mixed
+  // content. Judging it by the gateway rule dead-ended every deployment whose
+  // media origin is plain http — and told the buyer the shop had set up no
+  // account, when the shop had.
+  if (!isDisplayableImageURL(url)) {
+    return <ManualUnset brand={brand} />;
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap' }}>
+      <QrImage url={url} />
+      <div style={{ fontSize: 13.5, color: '#8A7D70', lineHeight: 1.8 }}>
+        Pindai dengan aplikasi bank atau e-wallet apa pun.
+        <br />
+        <strong style={{ color: '#43382E' }}>Nominalnya diisi sendiri</strong> — kode ini tidak
+        membawa jumlah, jadi ketik persis seperti di atas.
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A manual method whose account has gone missing.
+ *
+ * The same shape as the QRIS dead end above, and for the same reason: the
+ * buyer's order is alive and payable, only the instructions are not, so the
+ * way out is the shop rather than a retry.
+ */
+function ManualUnset({ brand }) {
+  return (
+    <div
+      style={{
+        background: '#FDF6E3',
+        border: '1px dashed #E0C98A',
+        borderRadius: 16,
+        padding: '18px 20px',
+      }}
+    >
+      <div style={{ fontWeight: 700, fontSize: 14 }}>Rekening belum tersedia</div>
+      <p style={{ fontSize: 13.5, color: '#6E5B45', lineHeight: 1.7, margin: '8px 0 0' }}>
+        Toko belum mencantumkan tujuan transfer untuk metode ini. Pesananmu tetap tersimpan —
+        hubungi kami untuk menyelesaikannya.
+      </p>
+      {brand.whatsapp_url ? (
+        <a
+          href={brand.whatsapp_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ display: 'inline-block', marginTop: 12, color: '#B4557A', fontWeight: 700, fontSize: 13.5 }}
+        >
+          {brand.whatsapp_text || 'Hubungi kami'}
+        </a>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * "Saya sudah bayar", and what it turns into.
+ *
+ * A manual payment produces no callback, so this is the only way the shop
+ * learns that money may be coming. It proves nothing and the copy does not
+ * pretend otherwise — what it buys the buyer is time, because the claim moves
+ * the order's deadline out once so a transfer made near the end is not expired
+ * while it is in flight.
+ */
+function ManualClaim({ order, onClaim, claiming, claimError, canClaim }) {
+  if (order.buyer_claimed_at) {
+    return (
+      <div
+        style={{
+          marginTop: 18,
+          background: '#FDF6E3',
+          border: '1px solid #F0E4CF',
+          borderRadius: 14,
+          padding: '14px 16px',
+        }}
+      >
+        <div style={{ fontWeight: 700, fontSize: 14 }}>Menunggu konfirmasi penjual</div>
+        <p style={{ fontSize: 13.5, color: '#6E5B45', lineHeight: 1.7, margin: '6px 0 0' }}>
+          Terima kasih — penjual akan mencocokkannya dengan mutasi rekening mereka. Status pesanan
+          ini berubah sendiri begitu dikonfirmasi.
+        </p>
+      </div>
+    );
+  }
+
+  if (!canClaim) return null;
+
+  return (
+    <div style={{ marginTop: 18 }}>
+      <button
+        type="button"
+        onClick={onClaim}
+        disabled={claiming}
+        style={{
+          width: '100%',
+          padding: '13px 18px',
+          borderRadius: 14,
+          background: claiming ? '#E8C9D6' : '#B4557A',
+          color: '#FFF',
+          fontWeight: 700,
+          fontSize: 14.5,
+          cursor: claiming ? 'default' : 'pointer',
+        }}
+      >
+        {claiming ? 'Mengirim…' : 'Saya sudah bayar'}
+      </button>
+      <p style={{ fontSize: 12.5, color: '#B7AA9A', lineHeight: 1.7, margin: '8px 0 0' }}>
+        Tekan setelah transfer terkirim. Penjual mengeceknya sendiri, jadi tidak perlu unggah
+        bukti.
+      </p>
+      {claimError ? (
+        <p role="alert" style={{ fontSize: 13, color: '#C0392B', margin: '8px 0 0' }}>
+          {claimError.message}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function QrImageBlock({ url, config, brand }) {
   if (!isQrImageURL(url)) {
     return (

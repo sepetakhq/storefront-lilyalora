@@ -61,6 +61,25 @@ describe('fmtClock', () => {
     expect(fmtClock(65_000)).toBe('1:05');
     expect(fmtClock(-1)).toBe('0:00');
   });
+
+  it('grows an hours field rather than counting to 1439 minutes', () => {
+    // A manual payment window is a day. Without the hours term this read
+    // "1439:59", which is not a duration anybody can parse.
+    expect(fmtClock(24 * 60 * 60_000)).toBe('24:00:00');
+    expect(fmtClock(3_600_000 + 65_000)).toBe('1:01:05');
+  });
+
+  it('shows no hours field until there are hours', () => {
+    // Below an hour every existing caller is unchanged to the character: an
+    // OTP window that started reading "0:05:00" would be a change to screens
+    // this feature never touched.
+    expect(fmtClock(5 * 60_000)).toBe('5:00');
+    expect(fmtClock(59 * 60_000 + 59_000)).toBe('59:59');
+    // The one place the change is visible on an existing screen: the seeded
+    // gateway window is exactly sixty minutes, so its first tick now reads
+    // 1:00:00 rather than 60:00. That is the better of the two.
+    expect(fmtClock(3_600_000)).toBe('1:00:00');
+  });
 });
 
 describe('interpolate', () => {
