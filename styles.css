@@ -18,6 +18,10 @@ input:focus, select:focus, textarea:focus { outline: 2px solid #F3B8C8; outline-
   50%  { transform: translateY(-10px); }
   100% { transform: translateY(0); }
 }
+/* The hero's wash drifts. A class rather than an inline animation, so the one
+   piece of ambient motion on the page can be switched off below with the
+   rest -- inline, it was the only animation here that ignored the request. */
+.la-floaty { animation: floaty 7s ease-in-out infinite; }
 
 /* --- hover states (ported from the design's style-hover attributes) --- */
 .hv-pink:hover    { color: #D26E8E; }
@@ -56,7 +60,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid #F3B8C8; outline-
 /* Motion is decoration here; anyone who has asked for less should get a
    still placeholder rather than a pulsing one. */
 @media (prefers-reduced-motion: reduce) {
-  .la-shimmer { animation: none; }
+  .la-shimmer, .la-floaty { animation: none; }
   .hv-card:hover, .hv-card-pink:hover { transform: none; }
 }
 
