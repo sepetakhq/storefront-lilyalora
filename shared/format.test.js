@@ -8,6 +8,7 @@ import {
   fmtDateTime,
   fmtTime,
   interpolate,
+  paragraphs,
   shippingCopy,
 } from './format.js';
 
@@ -108,6 +109,48 @@ describe('shippingCopy', () => {
   it('is empty for missing copy', () => {
     expect(shippingCopy(undefined, values, false)).toBe('');
     expect(shippingCopy(undefined, values, true)).toBe('');
+  });
+});
+
+// The about story is one textarea on the merchant's side and several <p>
+// elements on the buyer's. This is the whole of that translation, so every way
+// a person can press enter has to land somewhere sensible.
+describe('paragraphs', () => {
+  it('splits on a blank line', () => {
+    expect(paragraphs('Satu.\n\nDua.')).toEqual(['Satu.', 'Dua.']);
+  });
+
+  it('keeps a single line as one paragraph', () => {
+    expect(paragraphs('Satu.')).toEqual(['Satu.']);
+  });
+
+  // A single newline is a wrapped line, not a new paragraph. Splitting on it
+  // would break every sentence a merchant let wrap in the textarea.
+  it('does not split on a single newline', () => {
+    expect(paragraphs('Satu.\nmasih satu.')).toEqual(['Satu.\nmasih satu.']);
+  });
+
+  it('collapses a run of blank lines into one break', () => {
+    expect(paragraphs('Satu.\n\n\n\nDua.')).toEqual(['Satu.', 'Dua.']);
+  });
+
+  // A Windows textarea sends \r\n, and without normalising it the \r rides
+  // along into the rendered text.
+  it('handles CRLF', () => {
+    expect(paragraphs('Satu.\r\n\r\nDua.')).toEqual(['Satu.', 'Dua.']);
+  });
+
+  it('trims each paragraph and drops empty ones', () => {
+    expect(paragraphs('\n\n  Satu.  \n\n   \n\n Dua. \n\n')).toEqual(['Satu.', 'Dua.']);
+  });
+
+  // A merchant who has written nothing renders nothing -- not one empty <p>,
+  // which would leave a gap the page has no explanation for.
+  it('is empty for empty, blank and missing copy', () => {
+    expect(paragraphs('')).toEqual([]);
+    expect(paragraphs('   \n\n  ')).toEqual([]);
+    expect(paragraphs(undefined)).toEqual([]);
+    expect(paragraphs(null)).toEqual([]);
   });
 });
 

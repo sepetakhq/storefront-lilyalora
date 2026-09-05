@@ -55,6 +55,27 @@ export function fmtClock(ms) {
 }
 
 /**
+ * A merchant's multi-line copy, split into paragraphs.
+ *
+ * The API stores the about story as one string, because that is what a
+ * merchant types into one textarea. Where the paragraphs fall is markup, and
+ * markup is the storefront's job — the same division that keeps Rupiah
+ * formatting on this side of the wire.
+ *
+ * A blank line is the break. Runs of them collapse, because a merchant who
+ * pressed enter four times meant one paragraph break, and `\r\n` is handled
+ * because a Windows textarea sends it.
+ */
+export function paragraphs(text) {
+  if (!text) return [];
+  return String(text)
+    .replace(/\r\n?/g, '\n')
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+}
+
+/**
  * Brand copy ships with literal placeholders the storefront substitutes,
  * because the API deliberately does not own Rupiah formatting.
  * Currently only {free_shipping_min}.

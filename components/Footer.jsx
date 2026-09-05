@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 
 import { useConfig } from '../config/ConfigProvider.jsx';
+import { BrandMark } from './BrandMark.jsx';
 
 const colTitle = {
   fontWeight: 700,
@@ -30,18 +31,11 @@ export default function Footer() {
         }}
       >
         <div style={{ flex: '2 1 260px', minWidth: 240 }}>
-          <div
-            style={{
-              fontFamily: "'Cormorant Garamond',serif",
-              fontStyle: 'italic',
-              fontWeight: 600,
-              fontSize: 30,
-              color: '#FFFDF7',
-            }}
-          >
-            {brand.wordmark_primary}{' '}
-            <span style={{ color: '#F3B8C8' }}>{brand.wordmark_accent}</span>
-          </div>
+          <BrandMark
+            height={38}
+            maxWidth={240}
+            wordmark={{ primary: '#FFFDF7', accent: '#F3B8C8', size: 30 }}
+          />
           <p
             style={{
               fontSize: 14,
