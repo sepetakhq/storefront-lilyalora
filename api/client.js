@@ -7,6 +7,18 @@
 // escape hatch for pointing a local frontend at a staging API.
 export const API_BASE = import.meta.env.VITE_API_BASE || '/api/v1';
 
+// The response shape this bundle was written against.
+//
+// A source constant, not an env var and not a Vite `define`. Both apps read one
+// root .env, so a variable could not differ between the storefront and the
+// backoffice even if it should — and it should not. Which shape a client parses
+// is a fact about the code that parses it, so moving this is a code change,
+// reviewed alongside the components that read the new fields.
+//
+// The server keeps serving this shape for as long as it is listed in
+// backend/internal/apiversion/releases.go, whatever else ships in between.
+export const API_VERSION = '2026-09-05';
+
 // Copy for the failures the server never gets to describe itself.
 const NETWORK_MESSAGE = 'Koneksi terputus. Periksa internetmu, lalu coba lagi.';
 const INTERNAL_MESSAGE = 'Ada gangguan di sisi kami. Coba lagi sebentar lagi.';
@@ -112,6 +124,14 @@ export async function apiFetch(
   if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
   // Merged last so a caller can override Accept or Content-Type deliberately.
   if (extraHeaders) Object.assign(headers, extraHeaders);
+  // After the merge, not beside the defaults above: the pinned version is not
+  // a default a caller may override. A caller that could unpin itself would
+  // silently start receiving a shape it does not parse.
+  //
+  // Sent on backoffice requests too, since adminFetch funnels through here.
+  // The server ignores it on /api/v1/admin, which is deliberate — the
+  // backoffice ships with its own API and needs no version contract.
+  headers['X-API-Version'] = API_VERSION;
 
   let res;
   try {

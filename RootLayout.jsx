@@ -148,17 +148,27 @@ function Splash() {
 }
 
 /**
- * The tenant could not be resolved: an unknown host (404) or a suspended store
- * (503). Both are real, and neither should render as a broken page.
+ * The shell could not load: an unknown host (404), a suspended store (503), or
+ * a bundle pinned to an API version the server no longer serves. All three are
+ * real, and none should render as a broken page.
  */
 function StoreUnavailable({ error, onRetry }) {
   const suspended = error?.status === 503;
+  // This tab is running a cached bundle older than anything the API still
+  // speaks. Retrying re-sends the same dead version forever; only a reload
+  // fetches a newer bundle. index.html is served no-cache, so it will.
+  const stale = error?.code === 'unsupported_api_version';
+
+  let title = 'Toko tidak ditemukan';
+  if (stale) title = 'Aplikasi perlu dimuat ulang';
+  else if (suspended) title = 'Toko sedang tidak aktif';
+
   return (
     <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#FFFDF7' }}>
       <ErrorState
         error={error}
-        title={suspended ? 'Toko sedang tidak aktif' : 'Toko tidak ditemukan'}
-        onRetry={suspended ? onRetry : undefined}
+        title={title}
+        onRetry={stale ? () => window.location.reload() : suspended ? onRetry : undefined}
       />
     </div>
   );
