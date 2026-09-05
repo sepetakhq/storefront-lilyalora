@@ -2,6 +2,7 @@ import { Link, NavLink } from 'react-router-dom';
 
 import { useConfig } from '../config/ConfigProvider.jsx';
 import { useCart } from '../cart/CartProvider.jsx';
+import { BrandMark } from './BrandMark.jsx';
 
 const bar = { width: 16, height: 2, background: '#43382E', borderRadius: 2 };
 
@@ -42,18 +43,11 @@ export default function Header({ isMobile, menuOpen, onToggleMenu, onNavigate })
           onClick={onNavigate}
           style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', lineHeight: 1 }}
         >
-          <span
-            style={{
-              fontFamily: "'Cormorant Garamond',serif",
-              fontStyle: 'italic',
-              fontWeight: 600,
-              fontSize: 28,
-              color: '#43382E',
-            }}
-          >
-            {brand.wordmark_primary}{' '}
-            <span style={{ color: '#D26E8E' }}>{brand.wordmark_accent}</span>
-          </span>
+          <BrandMark
+            height={34}
+            maxWidth={200}
+            wordmark={{ primary: '#43382E', accent: '#D26E8E', size: 28 }}
+          />
           <span
             style={{
               fontSize: 9,
