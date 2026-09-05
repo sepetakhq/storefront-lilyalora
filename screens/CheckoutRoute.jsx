@@ -678,6 +678,15 @@ function Review({
           {draft.payment_fee > 0 ? (
             <SummaryRow label="Biaya admin" value={fmt(draft.payment_fee)} />
           ) : null}
+          {/*
+            Shown here as well as on the order page, and for a reason beyond
+            the footer adding up: this is the screen where the buyer decides
+            the number is right. Meeting it for the first time in their banking
+            app is how it gets rounded off.
+          */}
+          {draft.unique_code > 0 ? (
+            <SummaryRow label="Kode unik" value={fmt(draft.unique_code)} />
+          ) : null}
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 18, fontWeight: 700, marginTop: 4 }}>
             <span>Total</span>
             <span style={{ color: '#D26E8E' }}>{fmt(draft.total)}</span>

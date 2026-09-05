@@ -41,7 +41,10 @@ const ROUTE_PATHS = {
   about: '/tentang',
 };
 
-function shape(raw) {
+// Exported for its test. Every null guard here stands for a payload an older
+// API can still send, and those are cheaper to pin as a pure function than by
+// rendering a provider around a mocked query.
+export function shape(raw) {
   const commerce = raw.commerce ?? {};
   const brand = raw.brand ?? {};
   const freeShippingMin = commerce.free_shipping_min ?? 0;
@@ -85,6 +88,16 @@ function shape(raw) {
         .map((s) => ({ ...s, label: copy(s.label) }))
         .filter((s) => s.label),
       heroImages: brand.hero_images ?? [],
+      // Null when the merchant has not uploaded one, which is what tells the
+      // header to render the wordmark instead. Not `?? {}` — an empty object
+      // would read as a logo whose URL failed to load.
+      logoImage: brand.logo_image ?? null,
+      // Already resolved by the API: an unset portrait arrives as the hero the
+      // about page has always borrowed, so there is nothing to fall back to
+      // here.
+      aboutImage: brand.about_image ?? null,
+      aboutTitle: copy(brand.about_title),
+      aboutBody: copy(brand.about_body),
       sections: brand.section_copy ?? {},
       tagline: copy(brand.tagline),
       productCareCopy: copy(brand.product_care_copy),

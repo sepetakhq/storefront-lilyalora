@@ -104,6 +104,27 @@ export const reopenPayment = async (token, signal) =>
     })
   ).data?.payment ?? null;
 
+/**
+ * Tells the shop the buyer has paid a manual order.
+ *
+ * Proves nothing — the shop still checks their own bank — but it is the only
+ * signal a manual payment produces, and it buys the buyer time: the order's
+ * deadline moves out once so a transfer made near the end is not expired and
+ * restocked while it is in flight.
+ *
+ * No body, for the same reason `reopenPayment` takes none. Returns the whole
+ * `{order, payment}` pair rather than one half, so the page re-renders from
+ * one source instead of patching its own state — the claim changes the order
+ * (its deadline and its claim time), not the payment.
+ */
+export const claimPayment = async (token, signal) =>
+  (
+    await apiFetch(`/orders/track/${encodeURIComponent(token)}/payment/claim`, {
+      method: 'POST',
+      signal,
+    })
+  ).data ?? null;
+
 export const sendLookupCode = async (contact, signal) =>
   (await apiFetch('/orders/lookup/otp/send', { method: 'POST', body: { contact }, signal })).data;
 

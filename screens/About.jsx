@@ -1,15 +1,23 @@
 import { Img, SIZES } from '../ui/Img.jsx';
 import { useConfig } from '../config/ConfigProvider.jsx';
+import { paragraphs } from '../shared/format.js';
 
 export default function About() {
   const { brand } = useConfig();
-  // The About portrait reuses the second hero image rather than a hardcoded
-  // file, so a second tenant gets its own photograph here too.
-  const portrait = brand.heroImages[1] ?? brand.heroImages[0];
+  // Already resolved by the API: a merchant who has not chosen a portrait gets
+  // the hero this page has always borrowed, and the choice between the two is
+  // not the storefront's to make.
+  const portrait = brand.aboutImage;
+  // The heading and the shop's name are the same string for most shops, so an
+  // unset title renders the wordmark rather than an empty h1.
+  const title =
+    brand.aboutTitle ||
+    [brand.wordmark_primary, brand.wordmark_accent].filter(Boolean).join(' ');
+  const story = paragraphs(brand.aboutBody);
 
   return (
     <main
-      aria-label="Tentang Lily Alora"
+      aria-label={`Tentang ${title}`}
       style={{ flex: 1, maxWidth: 1000, margin: '0 auto', padding: '36px 20px 60px', width: '100%' }}
     >
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 36, alignItems: 'center' }}>
@@ -47,17 +55,30 @@ export default function About() {
               margin: '10px 0 14px',
             }}
           >
-            Lily Alora
+            {title}
           </h1>
-          <p style={{ color: '#8A7D70', fontSize: 16, lineHeight: 1.75, margin: '0 0 14px' }}>
-            Nama <em>Lily Alora</em> mencerminkan harapan dan kebahagiaan bagi siapa pun yang
-            memakainya. Kami percaya satu helai kerudung bisa membawa sejuta kebahagiaan — itulah
-            janji kami di setiap produk.
-          </p>
-          <p style={{ color: '#8A7D70', fontSize: 16, lineHeight: 1.75, margin: '0 0 22px' }}>
-            Lahir di Pekalongan, kota batik yang penuh warna, kami memilih palet khas butter yellow
-            dan pink muda: hangat, manis, dan penuh senyuman.
-          </p>
+          {/*
+            Text nodes, never dangerouslySetInnerHTML. The body is copy a
+            merchant typed into the backoffice, and the shortest path from
+            "let them use bold" to "let them inject a script" runs through
+            exactly this element.
+
+            The last paragraph carries the wider gap, so the spacing above the
+            contact box does not depend on how many paragraphs were written.
+          */}
+          {story.map((para, i) => (
+            <p
+              key={i}
+              style={{
+                color: '#8A7D70',
+                fontSize: 16,
+                lineHeight: 1.75,
+                margin: i === story.length - 1 ? '0 0 22px' : '0 0 14px',
+              }}
+            >
+              {para}
+            </p>
+          ))}
 
           <div
             style={{ background: '#FDF6E3', borderRadius: 18, padding: '18px 20px', marginBottom: 18 }}

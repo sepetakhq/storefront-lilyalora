@@ -1,5 +1,8 @@
 import { useCountdown } from '../hooks/useCountdown.js';
 import { fmtClock } from '../shared/format.js';
+import { serverNow } from '../api/client.js';
+
+const HOUR = 60 * 60 * 1000;
 
 /**
  * The isolation boundary that lets the global one-second tick die.
@@ -31,8 +34,20 @@ export function CountdownCells({ until, onExpire }) {
 
 /** mm:ss, for the OTP and payment deadlines. */
 export function CountdownClock({ until, onExpire, style }) {
-  // fmtClock is m:ss at every magnitude — likewise always showing seconds.
-  const { ms, active } = useCountdown(until, { onExpire, resolution: 'second' });
+  // Seconds while there are minutes left, which is every gateway deadline and
+  // every OTP window. A manual payment window is a day, and ticking a day away
+  // one second at a time is 86,400 renders and 86,400 timers to animate a
+  // digit nobody is watching — so far out the display drops to minutes and
+  // takes the relaxed cadence useCountdown already implements, which is
+  // exactly the condition that hook documents as safe.
+  // Read from `until` rather than from the hook's own output, whose cadence
+  // this decides. Crossing the hour flips it once and restarts the timer,
+  // which is the moment the display starts showing seconds that move anyway.
+  const far = Date.parse(until) - serverNow() > HOUR;
+  const { ms, active } = useCountdown(until, {
+    onExpire,
+    resolution: far ? 'adaptive' : 'second',
+  });
   if (!active) return null;
   return <span style={{ fontVariantNumeric: 'tabular-nums', ...style }}>{fmtClock(ms)}</span>;
 }

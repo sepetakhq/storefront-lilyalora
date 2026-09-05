@@ -9,7 +9,7 @@ import {
 } from '../api/endpoints.js';
 import { qk } from '../api/queryKeys.js';
 import { serverNow } from '../api/client.js';
-import { PAY_DEAD, paymentState } from '../lib/payment.js';
+import { PAY_DEAD, isManualPayment, paymentState } from '../lib/payment.js';
 
 const PAGE_SIZE = 12;
 
@@ -142,6 +142,14 @@ export function useOrder(token, { poll = false } = {}) {
       // one. A successful retry writes a live payment into this cache, which
       // puts the ladder below back.
       if (paymentState(data.payment) === PAY_DEAD) return 60_000;
+
+      // A manual payment has no callback that could ever arrive: the only
+      // thing that moves this order is the shop confirming it by hand, which
+      // happens when they next look at their bank. The window is a day, so the
+      // tiers below would make roughly four thousand requests per open tab
+      // waiting for an event that has no timing. Slow and steady instead,
+      // leaning on refetchOnWindowFocus for the moment the buyer comes back.
+      if (isManualPayment(data.payment)) return 60_000;
 
       const age = Number.isNaN(placed) ? 0 : now - placed;
       if (age < 2 * 60_000) return 5_000;

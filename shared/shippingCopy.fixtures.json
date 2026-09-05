@@ -47,6 +47,18 @@
       "want": ""
     },
     {
+      "name": "an unknown token reaches the buyer literally, offer on",
+      "text": "Gratis ongkir min {free_shiping_min}.",
+      "freeShipping": true,
+      "want": "Gratis ongkir min {free_shiping_min}."
+    },
+    {
+      "name": "an unknown token is not a shipping promise, so nothing is withheld",
+      "text": "Gratis ongkir min {free_shiping_min}.",
+      "freeShipping": false,
+      "want": "Gratis ongkir min {free_shiping_min}."
+    },
+    {
       "name": "hero stat label, offer on",
       "text": "Ongkir min {free_shipping_min}",
       "freeShipping": true,

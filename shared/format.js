@@ -46,12 +46,42 @@ export function fmtDateTime(value) {
   return `${DATETIME_DATE_FMT.format(d)}, ${fmtTime(d)}`;
 }
 
-/** mm:ss for the OTP and payment countdowns. */
+/** mm:ss for the OTP and payment countdowns, h:mm:ss past an hour. */
 export function fmtClock(ms) {
   const total = Math.max(0, Math.ceil(ms / 1000));
+  const h = Math.floor(total / 3600);
   const m = Math.floor(total / 60);
   const s = total % 60;
+  // Hours only once there are any. Every existing caller — the OTP window, a
+  // gateway payment deadline — is minutes, so their output is unchanged to the
+  // character. A manual payment window is a day, and without this it read
+  // "1439:59", which is not a duration anybody can parse.
+  if (h > 0) {
+    return `${h}:${String(m % 60).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
   return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+
+/**
+ * A merchant's multi-line copy, split into paragraphs.
+ *
+ * The API stores the about story as one string, because that is what a
+ * merchant types into one textarea. Where the paragraphs fall is markup, and
+ * markup is the storefront's job — the same division that keeps Rupiah
+ * formatting on this side of the wire.
+ *
+ * A blank line is the break. Runs of them collapse, because a merchant who
+ * pressed enter four times meant one paragraph break, and `\r\n` is handled
+ * because a Windows textarea sends it.
+ */
+export function paragraphs(text) {
+  if (!text) return [];
+  return String(text)
+    .replace(/\r\n?/g, '\n')
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter(Boolean);
 }
 
 /**

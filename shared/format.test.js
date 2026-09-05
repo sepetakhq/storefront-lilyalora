@@ -8,6 +8,7 @@ import {
   fmtDateTime,
   fmtTime,
   interpolate,
+  paragraphs,
   shippingCopy,
 } from './format.js';
 
@@ -61,6 +62,25 @@ describe('fmtClock', () => {
     expect(fmtClock(65_000)).toBe('1:05');
     expect(fmtClock(-1)).toBe('0:00');
   });
+
+  it('grows an hours field rather than counting to 1439 minutes', () => {
+    // A manual payment window is a day. Without the hours term this read
+    // "1439:59", which is not a duration anybody can parse.
+    expect(fmtClock(24 * 60 * 60_000)).toBe('24:00:00');
+    expect(fmtClock(3_600_000 + 65_000)).toBe('1:01:05');
+  });
+
+  it('shows no hours field until there are hours', () => {
+    // Below an hour every existing caller is unchanged to the character: an
+    // OTP window that started reading "0:05:00" would be a change to screens
+    // this feature never touched.
+    expect(fmtClock(5 * 60_000)).toBe('5:00');
+    expect(fmtClock(59 * 60_000 + 59_000)).toBe('59:59');
+    // The one place the change is visible on an existing screen: the seeded
+    // gateway window is exactly sixty minutes, so its first tick now reads
+    // 1:00:00 rather than 60:00. That is the better of the two.
+    expect(fmtClock(3_600_000)).toBe('1:00:00');
+  });
 });
 
 describe('interpolate', () => {
@@ -108,6 +128,48 @@ describe('shippingCopy', () => {
   it('is empty for missing copy', () => {
     expect(shippingCopy(undefined, values, false)).toBe('');
     expect(shippingCopy(undefined, values, true)).toBe('');
+  });
+});
+
+// The about story is one textarea on the merchant's side and several <p>
+// elements on the buyer's. This is the whole of that translation, so every way
+// a person can press enter has to land somewhere sensible.
+describe('paragraphs', () => {
+  it('splits on a blank line', () => {
+    expect(paragraphs('Satu.\n\nDua.')).toEqual(['Satu.', 'Dua.']);
+  });
+
+  it('keeps a single line as one paragraph', () => {
+    expect(paragraphs('Satu.')).toEqual(['Satu.']);
+  });
+
+  // A single newline is a wrapped line, not a new paragraph. Splitting on it
+  // would break every sentence a merchant let wrap in the textarea.
+  it('does not split on a single newline', () => {
+    expect(paragraphs('Satu.\nmasih satu.')).toEqual(['Satu.\nmasih satu.']);
+  });
+
+  it('collapses a run of blank lines into one break', () => {
+    expect(paragraphs('Satu.\n\n\n\nDua.')).toEqual(['Satu.', 'Dua.']);
+  });
+
+  // A Windows textarea sends \r\n, and without normalising it the \r rides
+  // along into the rendered text.
+  it('handles CRLF', () => {
+    expect(paragraphs('Satu.\r\n\r\nDua.')).toEqual(['Satu.', 'Dua.']);
+  });
+
+  it('trims each paragraph and drops empty ones', () => {
+    expect(paragraphs('\n\n  Satu.  \n\n   \n\n Dua. \n\n')).toEqual(['Satu.', 'Dua.']);
+  });
+
+  // A merchant who has written nothing renders nothing -- not one empty <p>,
+  // which would leave a gap the page has no explanation for.
+  it('is empty for empty, blank and missing copy', () => {
+    expect(paragraphs('')).toEqual([]);
+    expect(paragraphs('   \n\n  ')).toEqual([]);
+    expect(paragraphs(undefined)).toEqual([]);
+    expect(paragraphs(null)).toEqual([]);
   });
 });
 

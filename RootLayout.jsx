@@ -57,11 +57,26 @@ function Shell() {
 /**
  * The promo strip. It comes from the same payload as the home sections, so it
  * is simply absent until that query resolves rather than flashing in.
+ *
+ * Exported for its test: the layout around it needs a router and a query
+ * client, and the rules about when this bar renders are worth testing without
+ * either.
  */
-function Announcement() {
+export function Announcement() {
   const { data } = useHome();
+  const { copy } = useConfig();
   const announcement = data?.announcement;
-  if (!announcement?.enabled || !announcement.text) return null;
+  if (!announcement?.enabled) return null;
+
+  // Through the same substitution as the tagline and the product copy, so a
+  // banner written as "gratis ongkir min {free_shipping_min}" follows the
+  // threshold the merchant actually set instead of a number typed once and
+  // forgotten. And when the offer is switched off the sentence is withheld
+  // rather than interpolated -- a bar promising free shipping the checkout
+  // would refuse is worse than no bar, which is why an empty result renders
+  // nothing at all.
+  const text = copy(announcement.text);
+  if (!text) return null;
 
   return (
     <Link
@@ -79,7 +94,7 @@ function Announcement() {
         textAlign: 'center',
       }}
     >
-      {announcement.text}
+      {text}
     </Link>
   );
 }
