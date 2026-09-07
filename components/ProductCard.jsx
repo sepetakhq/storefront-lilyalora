@@ -55,10 +55,31 @@ const VARIANTS = {
   },
 };
 
-const badgeStyle = {
+/**
+ * Both chips share one row rather than each owning a corner.
+ *
+ * They used to be two independently pinned absolutes, `left: 12` and
+ * `right: 12`, which is exactly as wide as the card is — until it isn't. In a
+ * two-up grid on a phone a card is around 165px, the two pills together want
+ * closer to 190px, and absolutes cannot see each other: the pre-order chip
+ * simply painted over the discount. One flex row lets them wrap instead, so
+ * the second chip drops to a second line and both stay readable at any width.
+ *
+ * `pointerEvents: none` because the row spans the photo and the whole card is
+ * a link; the chips are labels, not targets.
+ */
+const badgeRowStyle = {
   position: 'absolute',
   top: 12,
   left: 12,
+  right: 12,
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 6,
+  pointerEvents: 'none',
+};
+
+const badgeStyle = {
   background: '#D26E8E',
   color: '#fff',
   fontSize: 11,
@@ -66,6 +87,14 @@ const badgeStyle = {
   letterSpacing: '0.08em',
   borderRadius: 999,
   padding: '5px 11px',
+  // A pill wraps as a whole or not at all — breaking "PRE-ORDER" across two
+  // lines inside its own capsule looks like a rendering fault, not a label.
+  whiteSpace: 'nowrap',
+  flexShrink: 0,
+  // The guard for a promo name long enough to outgrow the card on its own.
+  maxWidth: '100%',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
 };
 
 /**
@@ -85,8 +114,10 @@ const badgeStyle = {
  */
 const preorderBadgeStyle = {
   ...badgeStyle,
-  left: 'auto',
-  right: 12,
+  // Pushed to the far edge of whichever line it lands on, so it keeps the
+  // opposite-corner reading when both fit and still sits apart from the
+  // discount when they stack.
+  marginLeft: 'auto',
   background: '#F5E6AE',
   color: '#8A6D1F',
 };
@@ -165,8 +196,12 @@ export default function ProductCard({ p, variant = 'grid', showSoldOut = false, 
           height={p.image_height}
           priority={priority}
         />
-        {withBadge && <span style={badgeStyle}>{p.badge}</span>}
-        {p.preorder && <span style={preorderBadgeStyle}>PRE-ORDER</span>}
+        {(withBadge || p.preorder) && (
+          <div style={badgeRowStyle}>
+            {withBadge && <span style={badgeStyle}>{p.badge}</span>}
+            {p.preorder && <span style={preorderBadgeStyle}>PRE-ORDER</span>}
+          </div>
+        )}
         {showSoldOut && overlay && (
           <span style={overlayStyle}>
             <span style={{ letterSpacing: '0.14em' }}>{overlay.title}</span>
