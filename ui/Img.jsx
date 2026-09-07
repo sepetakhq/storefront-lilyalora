@@ -88,4 +88,8 @@ export const SIZES = {
   summaryLine: '44px',
   categoryTile: '(max-width: 900px) 50vw, 420px',
   hero: '(max-width: 900px) 100vw, 560px',
+  // The single-picture hero owns its column, so the box it actually renders at
+  // is both bigger than the pair's and knowable. Separate from `hero`, which
+  // the pair and the about-page portrait share.
+  heroSolo: '(max-width: 900px) 78vw, 420px',
 };

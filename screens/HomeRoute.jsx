@@ -62,9 +62,19 @@ function Section({ sec, first }) {
   }
 }
 
+// One shape, three weights: the photograph is an arch, a hairline echo of it
+// sits down-right where the second picture used to, and the wash behind them is
+// the same arch again. Given as a ratio rather than in pixels so the dome
+// survives at 265px on a phone and at 420px on a desktop.
+const ARCH = '50% 50% 24px 24px / 38% 38% 24px 24px';
+
 function Hero({ hero }) {
   const { brand } = useConfig();
-  const [big, small] = brand.heroImages;
+  const images = brand.heroImages ?? [];
+  // A stat whose label names a discount the checkout would not give is dropped
+  // in ConfigProvider, so an empty row is an ordinary state for a shop with
+  // free shipping switched off -- not only for one that never filled it in.
+  const stats = brand.heroStats ?? [];
 
   if (!hero) return null;
 
@@ -75,7 +85,9 @@ function Hero({ hero }) {
         padding: '48px 20px 40px',
         display: 'flex',
         flexWrap: 'wrap',
-        alignItems: 'center',
+        // Without the stats the text column is by far the shorter of the two,
+        // and centring it leaves the headline floating halfway down the photo.
+        alignItems: stats.length ? 'center' : 'flex-start',
         gap: 40,
       }}
     >
@@ -110,8 +122,14 @@ function Hero({ hero }) {
           }}
         >
           {hero.title}
-          <br />
-          <em style={{ color: '#D26E8E' }}>{hero.em}</em>
+          {/* Only the title is required server-side. An accent line nobody
+              wrote must not leave an empty line under the headline. */}
+          {hero.em?.trim() ? (
+            <>
+              <br />
+              <em style={{ color: '#D26E8E' }}>{hero.em}</em>
+            </>
+          ) : null}
         </h1>
         <p
           style={{
@@ -141,80 +159,165 @@ function Hero({ hero }) {
           {hero.cta}
         </Link>
 
-        <div style={{ display: 'flex', gap: 28, marginTop: 34, flexWrap: 'wrap' }}>
-          {brand.heroStats.map((stat) => (
-            <div key={stat.label}>
-              <div
-                style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 26, fontWeight: 700 }}
-              >
-                {stat.value}
+        {stats.length ? (
+          <div
+            data-testid="hero-stats"
+            style={{ display: 'flex', gap: 28, marginTop: 34, flexWrap: 'wrap' }}
+          >
+            {stats.map((stat) => (
+              <div key={stat.label}>
+                <div
+                  style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 26, fontWeight: 700 }}
+                >
+                  {stat.value}
+                </div>
+                {/* Copy ships with a {free_shipping_min} placeholder, already
+                    substituted — the API does not own Rupiah formatting. */}
+                <div style={{ fontSize: 12.5, color: '#8A7D70' }}>{stat.label}</div>
               </div>
-              {/* Copy ships with a {free_shipping_min} placeholder, already
-                  substituted — the API does not own Rupiah formatting. */}
-              <div style={{ fontSize: 12.5, color: '#8A7D70' }}>{stat.label}</div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : null}
       </div>
 
+      {/* A shop with no hero picture gets no image column at all: an empty one
+          rendered nothing but the wash, which reads as a stray pink cloud. */}
+      {images.length >= 2 ? <HeroPair big={images[0]} small={images[1]} /> : null}
+      {images.length === 1 ? <HeroSolo image={images[0]} /> : null}
+    </section>
+  );
+}
+
+const imageColumn = {
+  flex: '1 1 380px',
+  minWidth: 300,
+  position: 'relative',
+  display: 'flex',
+  justifyContent: 'center',
+  padding: '20px 0',
+};
+
+/**
+ * Two pictures, overlapping. Unchanged since it was the only hero there was:
+ * the pair carries its own composition, so it keeps the blob it was drawn
+ * around rather than borrowing the solo arches.
+ */
+function HeroPair({ big, small }) {
+  return (
+    <div style={imageColumn}>
       <div
+        className="la-floaty"
+        aria-hidden="true"
         style={{
-          flex: '1 1 380px',
-          minWidth: 300,
+          position: 'absolute',
+          inset: '10% 6% 6% 10%',
+          background: 'radial-gradient(circle at 30% 30%,#F5E6AE,#FADCE4 70%)',
+          borderRadius: '48% 52% 55% 45% / 50% 46% 54% 50%',
+        }}
+      />
+      <Img
+        src={big.url}
+        srcSet={big.srcset}
+        alt={big.alt}
+        ratio="4/5"
+        sizes={SIZES.hero}
+        priority
+        style={{
           position: 'relative',
-          display: 'flex',
-          justifyContent: 'center',
-          padding: '20px 0',
+          width: 'min(58%,300px)',
+          borderRadius: '160px 160px 22px 22px',
+          border: '6px solid #FFFDF7',
+          boxShadow: '0 20px 40px rgba(67,56,46,0.16)',
+        }}
+      />
+      <Img
+        src={small.url}
+        srcSet={small.srcset}
+        alt={small.alt}
+        ratio="3/4"
+        sizes={SIZES.hero}
+        priority
+        style={{
+          position: 'relative',
+          width: 'min(38%,200px)',
+          borderRadius: 22,
+          border: '6px solid #FFFDF7',
+          boxShadow: '0 16px 34px rgba(67,56,46,0.18)',
+          alignSelf: 'flex-end',
+          marginLeft: -60,
+          marginBottom: -8,
+        }}
+      />
+    </div>
+  );
+}
+
+/**
+ * One picture, which is what most shops upload. It is sized to own the column
+ * rather than to leave room for a second card, and the depth the missing card
+ * used to give comes from an outline of the same arch offset behind it.
+ */
+function HeroSolo({ image }) {
+  return (
+    <div style={imageColumn}>
+      {/* Two elements, because `floaty` animates `transform` and would
+          otherwise overwrite the one placing this off-centre. The outer div
+          places, the inner one drifts. */}
+      <div
+        aria-hidden="true"
+        data-testid="hero-halo"
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: '50%',
+          width: 'min(92%,480px)',
+          aspectRatio: '4/5',
+          transform: 'translate(calc(-50% - 18px),-20px)',
+          pointerEvents: 'none',
         }}
       >
         <div
+          className="la-floaty"
           style={{
-            position: 'absolute',
-            inset: '10% 6% 6% 10%',
-            background: 'radial-gradient(circle at 30% 30%,#F5E6AE,#FADCE4 70%)',
-            borderRadius: '48% 52% 55% 45% / 50% 46% 54% 50%',
-            animation: 'floaty 7s ease-in-out infinite',
+            width: '100%',
+            height: '100%',
+            borderRadius: ARCH,
+            background:
+              'radial-gradient(120% 90% at 30% 20%,#F7E9BC,#FADCE4 62%,rgba(250,220,228,0) 100%)',
           }}
         />
-        {big ? (
-          <Img
-            src={big.url}
-            srcSet={big.srcset}
-            alt={big.alt}
-            ratio="4/5"
-            sizes={SIZES.hero}
-            priority
-            style={{
-              position: 'relative',
-              width: 'min(58%,300px)',
-              borderRadius: '160px 160px 22px 22px',
-              border: '6px solid #FFFDF7',
-              boxShadow: '0 20px 40px rgba(67,56,46,0.16)',
-            }}
-          />
-        ) : null}
-        {small ? (
-          <Img
-            src={small.url}
-            srcSet={small.srcset}
-            alt={small.alt}
-            ratio="3/4"
-            sizes={SIZES.hero}
-            priority
-            style={{
-              position: 'relative',
-              width: 'min(38%,200px)',
-              borderRadius: 22,
-              border: '6px solid #FFFDF7',
-              boxShadow: '0 16px 34px rgba(67,56,46,0.18)',
-              alignSelf: 'flex-end',
-              marginLeft: -60,
-              marginBottom: -8,
-            }}
-          />
-        ) : null}
       </div>
-    </section>
+      <div
+        aria-hidden="true"
+        data-testid="hero-echo"
+        style={{
+          position: 'absolute',
+          top: 20,
+          left: '50%',
+          width: 'min(78%,420px)',
+          aspectRatio: '4/5',
+          transform: 'translate(calc(-50% + 22px),22px)',
+          borderRadius: ARCH,
+          border: '1px solid #E7D6AE',
+          pointerEvents: 'none',
+        }}
+      />
+      <Img
+        src={image.url}
+        srcSet={image.srcset}
+        alt={image.alt}
+        ratio="4/5"
+        sizes={SIZES.heroSolo}
+        priority
+        style={{
+          position: 'relative',
+          width: 'min(78%,420px)',
+          borderRadius: ARCH,
+          border: '6px solid #FFFDF7',
+          boxShadow: '0 20px 40px rgba(67,56,46,0.16)',
+        }}
+      />
+    </div>
   );
 }
 
