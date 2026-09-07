@@ -10,7 +10,7 @@ import { isSoldOut, leadDays, maxQty, stockNote } from '../lib/preorder.js';
 import { buyLabel, isImminent, isScheduled, msUntilOpen, windowNote } from '../lib/availability.js';
 import { useConfig } from '../config/ConfigProvider.jsx';
 import { useToast } from '../ui/ToastProvider.jsx';
-import { fmt, fmtClock } from '../shared/format.js';
+import { fmt, fmtClock, paragraphs } from '../shared/format.js';
 
 const detailsRow = { borderBottom: '1px solid #F0E4CF', padding: '14px 4px' };
 const summary = { fontWeight: 700, cursor: 'pointer', fontSize: 14.5 };
@@ -83,7 +83,7 @@ function useOpeningCountdown(product, onOpen) {
 }
 
 function ProductView({ product, onOpen }) {
-  const { brand, freeShipping, freeShippingMinLabel } = useConfig();
+  const { brand, freeShipping, freeShippingMinLabel, copy } = useConfig();
   const cart = useCart();
   const showToast = useToast();
   const navigate = useNavigate();
@@ -91,6 +91,32 @@ function ProductView({ product, onOpen }) {
   const [active, setActive] = useState(0);
   const [qty, setQty] = useState(1);
   const [broken, setBroken] = useState(() => new Set());
+
+  // The panel's three sections, resolved and then substituted, before anything
+  // is gated on them.
+  //
+  // The server picked each line from the most specific tier that said anything
+  // -- this product, then its category, then the shop -- so there is no
+  // fallback left to apply here. What remains is substitution, which stays on
+  // this side because the API deliberately does not own Rupiah formatting.
+  //
+  // The gates below read these and not the raw strings, because interpolation
+  // is what decides whether a section has anything to say: a care copy whose
+  // only sentence promises free shipping is withheld whole once the offer is
+  // off, and "" is what is left. It does not then fall back to the category's
+  // -- resolution happened on the stored text, and putting somebody else's
+  // words where this merchant deliberately wrote their own would be worse than
+  // saying nothing.
+  const care = paragraphs(copy(product.care_copy));
+  // Not run through copy(), and never was: routing a size line through the
+  // free-shipping withholding rule would make it vanish with the offer.
+  const spec = paragraphs(product.material_spec);
+  const hasPanel =
+    spec.length > 0 ||
+    care.length > 0 ||
+    Boolean(brand.productShippingCopy) ||
+    freeShipping ||
+    product.preorder;
 
   const all = product.images?.length
     ? product.images
@@ -343,46 +369,63 @@ function ProductView({ product, onOpen }) {
             Beli Sekarang
           </button>
 
-          <div style={{ borderTop: '1px solid #F0E4CF' }}>
-            {product.material_spec ? (
-              <details style={detailsRow}>
-                <summary style={summary}>Detail bahan &amp; ukuran</summary>
-                <p style={detailsText}>{product.material_spec}</p>
-              </details>
-            ) : null}
-            <details style={detailsRow}>
-              <summary style={summary}>Cara perawatan</summary>
-              <p style={detailsText}>{brand.productCareCopy}</p>
-            </details>
-            {/* Both lines can be withheld at once -- a merchant whose shipping
-                copy says nothing but "gratis ongkir di atas ..." -- and a panel
-                that opens onto nothing is worse than no panel. */}
-            {(brand.productShippingCopy || freeShipping || product.preorder) && (
-              <details style={{ padding: '14px 4px' }}>
-                <summary style={summary}>Pengiriman</summary>
-                {/* First, because it changes what every line below it means:
-                    the courier only starts counting once the item exists. */}
-                {product.preorder && (
-                  <p style={{ ...detailsText, color: '#8A6D1F', fontWeight: 600 }}>
-                    {leadDays(product)
-                      ? `Produk ini dibuat setelah pesanan dibayar. Perkiraan siap kirim ±${leadDays(product)} hari sejak pembayaran diterima, lalu dikirim seperti biasa.`
-                      : 'Produk ini dibuat setelah pesanan dibayar, lalu dikirim seperti biasa.'}
-                  </p>
-                )}
-                {brand.productShippingCopy && (
-                  <p style={detailsText}>{brand.productShippingCopy}</p>
-                )}
-                {/* Hardcoded rather than brand copy, so it needs its own gate:
-                    promising a threshold the checkout ignores is worse than
-                    saying nothing about shipping at all. */}
-                {freeShipping && (
-                  <p style={{ ...detailsText, marginTop: 6 }}>
-                    Gratis ongkir untuk belanja di atas {freeShippingMinLabel}.
-                  </p>
-                )}
-              </details>
-            )}
-          </div>
+          {/* The rule is gated too, not only the sections under it: a product
+              with nothing to say in any of them used to draw a bare 1px line
+              under the buy button and stop there. */}
+          {hasPanel && (
+            <div style={{ borderTop: '1px solid #F0E4CF' }}>
+              {spec.length > 0 ? (
+                <details style={detailsRow}>
+                  <summary style={summary}>Detail bahan &amp; ukuran</summary>
+                  {spec.map((t, i) => (
+                    <p key={i} style={detailsText}>
+                      {t}
+                    </p>
+                  ))}
+                </details>
+              ) : null}
+              {/* Gated, where it used to render unconditionally: a shop that had
+                  never written care copy got a panel opening onto nothing. */}
+              {care.length > 0 ? (
+                <details style={detailsRow}>
+                  <summary style={summary}>Cara perawatan</summary>
+                  {care.map((t, i) => (
+                    <p key={i} style={detailsText}>
+                      {t}
+                    </p>
+                  ))}
+                </details>
+              ) : null}
+              {/* Both lines can be withheld at once -- a merchant whose shipping
+                  copy says nothing but "gratis ongkir di atas ..." -- and a panel
+                  that opens onto nothing is worse than no panel. */}
+              {(brand.productShippingCopy || freeShipping || product.preorder) && (
+                <details style={{ padding: '14px 4px' }}>
+                  <summary style={summary}>Pengiriman</summary>
+                  {/* First, because it changes what every line below it means:
+                      the courier only starts counting once the item exists. */}
+                  {product.preorder && (
+                    <p style={{ ...detailsText, color: '#8A6D1F', fontWeight: 600 }}>
+                      {leadDays(product)
+                        ? `Produk ini dibuat setelah pesanan dibayar. Perkiraan siap kirim ±${leadDays(product)} hari sejak pembayaran diterima, lalu dikirim seperti biasa.`
+                        : 'Produk ini dibuat setelah pesanan dibayar, lalu dikirim seperti biasa.'}
+                    </p>
+                  )}
+                  {brand.productShippingCopy && (
+                    <p style={detailsText}>{brand.productShippingCopy}</p>
+                  )}
+                  {/* Hardcoded rather than brand copy, so it needs its own gate:
+                      promising a threshold the checkout ignores is worse than
+                      saying nothing about shipping at all. */}
+                  {freeShipping && (
+                    <p style={{ ...detailsText, marginTop: 6 }}>
+                      Gratis ongkir untuk belanja di atas {freeShippingMinLabel}.
+                    </p>
+                  )}
+                </details>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
