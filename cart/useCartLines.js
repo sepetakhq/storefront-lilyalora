@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 
 import { availableQty, cartLineStatus, leadDays } from '../lib/preorder.js';
+import { isBlocking } from '../lib/availability.js';
 import { useProductsBySlug } from '../hooks/queries.js';
 import { useCart } from './CartProvider.jsx';
 
@@ -48,7 +49,10 @@ export function useCartLines() {
       preorderLeadDays: lines.reduce((max, l) => (l.preorder && l.leadDays > max ? l.leadDays : max), 0),
       isLoading: lines.some((l) => l.status === 'loading'),
       // Anything that would make the draft fail outright.
-      hasBlockers: lines.some((l) => l.status === 'gone' || l.status === 'soldout'),
+      // Every status the draft would refuse, named once in availability.js so
+      // a rung added to the ladder cannot be forgotten here.
+      hasBlockers: lines.some((l) => isBlocking(l.status)),
+      statuses: lines.map((l) => l.status),
       hasErrors: lines.some((l) => l.status === 'error'),
     };
   }, [items, results]);

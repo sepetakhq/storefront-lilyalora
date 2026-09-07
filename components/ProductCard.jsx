@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 
 import { Img, SIZES } from '../ui/Img.jsx';
+import { overlayLabel } from '../lib/availability.js';
 import { fmt } from '../shared/format.js';
 
 const VARIANTS = {
@@ -91,6 +92,34 @@ const preorderBadgeStyle = {
 };
 
 /**
+ * The unavailable wash, over the photo.
+ *
+ * A state of the whole card rather than a label on it, which is why it takes
+ * the middle of the image instead of a third badge corner: a buyer scanning a
+ * grid needs to know this one is out before they read its name, and the two
+ * corners are already spoken for by an offer and a delivery promise.
+ *
+ * The cream is translucent so the photograph still reads underneath — the
+ * product is coming back, or coming soon, and hiding it entirely would be a
+ * stronger claim than the shop is making.
+ */
+const overlayStyle = {
+  position: 'absolute',
+  inset: 0,
+  background: 'rgba(255,253,247,0.72)',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 4,
+  alignItems: 'center',
+  justifyContent: 'center',
+  textAlign: 'center',
+  padding: '0 12px',
+  fontWeight: 700,
+  fontSize: 13,
+  color: '#8A7D70',
+};
+
+/**
  * `p` is the API's productCard DTO, consumed directly.
  *
  * The prototype mapped it through a client-side view model that recomputed
@@ -103,6 +132,10 @@ const preorderBadgeStyle = {
 export default function ProductCard({ p, variant = 'grid', showSoldOut = false, priority = false }) {
   const v = VARIANTS[variant];
   const withBadge = (v.showBadge === 'always' || v.showBadge) && Boolean(p.badge);
+  // One overlay slot for every reason a card cannot be bought, because they
+  // are one thing to a buyer looking at a grid: an unavailable product. Which
+  // reason is what the label says.
+  const overlay = overlayLabel(p);
 
   return (
     <Link
@@ -134,21 +167,17 @@ export default function ProductCard({ p, variant = 'grid', showSoldOut = false, 
         />
         {withBadge && <span style={badgeStyle}>{p.badge}</span>}
         {p.preorder && <span style={preorderBadgeStyle}>PRE-ORDER</span>}
-        {showSoldOut && p.sold_out && (
-          <span
-            style={{
-              position: 'absolute',
-              inset: 0,
-              background: 'rgba(255,253,247,0.6)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontWeight: 700,
-              letterSpacing: '0.14em',
-              color: '#8A7D70',
-            }}
-          >
-            HABIS
+        {showSoldOut && overlay && (
+          <span style={overlayStyle}>
+            <span style={{ letterSpacing: '0.14em' }}>{overlay.title}</span>
+            {overlay.detail ? (
+              // The date is the useful half of "SEGERA", so it is set as text
+              // rather than as more tracked-out capitals: a buyer reads it,
+              // they do not scan it.
+              <span style={{ fontSize: 12.5, fontWeight: 600, letterSpacing: 0, color: '#6E4634' }}>
+                {overlay.detail}
+              </span>
+            ) : null}
           </span>
         )}
       </div>

@@ -6,13 +6,14 @@ import { useCart, MAX_QTY } from '../cart/CartProvider.jsx';
 import { useCartLines } from '../cart/useCartLines.js';
 import { useConfig } from '../config/ConfigProvider.jsx';
 import { orderNote, shortNote } from '../lib/preorder.js';
+import { blockerNotice, windowNote } from '../lib/availability.js';
 import { didPurgeLegacy } from '../lib/storage.js';
 import { fmt } from '../shared/format.js';
 
 export default function CartRoute() {
   const { freeShipping, freeShippingMin } = useConfig();
   const cart = useCart();
-  const { lines, subtotal, isLoading, hasBlockers, preorderLeadDays } = useCartLines();
+  const { lines, statuses, subtotal, isLoading, hasBlockers, preorderLeadDays } = useCartLines();
 
   if (cart.isEmpty) {
     return (
@@ -121,7 +122,7 @@ export default function CartRoute() {
               marginTop: 4,
             }}
           >
-            Ada produk yang sudah tidak tersedia. Hapus dulu sebelum lanjut ke checkout.
+            {blockerNotice(statuses)}
           </div>
         ) : null}
 
@@ -198,7 +199,12 @@ function CartLine({ line, onQty, onRemove }) {
     );
   }
 
-  const soldOut = status === 'soldout';
+  // Three statuses share one presentation, because they share one meaning on
+  // this screen: the line stays, priced and pictured, and the quantity
+  // stepper goes away because there is no quantity to choose. What separates
+  // them is the sentence underneath.
+  const blocked = status === 'soldout' || status === 'scheduled' || status === 'ended';
+  const note = windowNote(product);
 
   return (
     <div style={card}>
@@ -210,7 +216,7 @@ function CartLine({ line, onQty, onRemove }) {
           alt={product.name}
           ratio="72/90"
           radius={12}
-          style={soldOut ? { opacity: 0.55 } : undefined}
+          style={blocked ? { opacity: 0.55 } : undefined}
         />
       </div>
 
@@ -221,9 +227,16 @@ function CartLine({ line, onQty, onRemove }) {
         <div style={{ fontSize: 13, color: '#8A7D70', marginTop: 2 }}>{product.category_label}</div>
         <div style={{ fontWeight: 700, color: '#D26E8E', marginTop: 6 }}>{fmt(product.price)}</div>
 
-        {soldOut ? (
+        {status === 'soldout' ? (
           <div style={{ fontSize: 13, fontWeight: 600, color: '#C05C7E', marginTop: 8 }}>
             Stok habis
+          </div>
+        ) : note ? (
+          // A scheduled line is the one blocker the buyer can act on -- come
+          // back when it opens -- so it says when rather than only that it
+          // cannot be bought.
+          <div style={{ fontSize: 13, fontWeight: 600, color: note.color, marginTop: 8 }}>
+            {note.text}
           </div>
         ) : status === 'overstock' ? (
           <div style={{ fontSize: 13, color: '#C08A2D', marginTop: 8 }}>
@@ -244,7 +257,7 @@ function CartLine({ line, onQty, onRemove }) {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
-        {!soldOut ? (
+        {!blocked ? (
           <div
             style={{
               display: 'flex',

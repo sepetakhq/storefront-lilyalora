@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import ProductCard from '../components/ProductCard.jsx';
@@ -7,9 +7,10 @@ import { EmptyState, ErrorState, Skeleton } from '../ui/states.jsx';
 import { useProduct } from '../hooks/queries.js';
 import { useCart } from '../cart/CartProvider.jsx';
 import { isSoldOut, leadDays, maxQty, stockNote } from '../lib/preorder.js';
+import { buyLabel, isImminent, isScheduled, msUntilOpen, windowNote } from '../lib/availability.js';
 import { useConfig } from '../config/ConfigProvider.jsx';
 import { useToast } from '../ui/ToastProvider.jsx';
-import { fmt } from '../shared/format.js';
+import { fmt, fmtClock } from '../shared/format.js';
 
 const detailsRow = { borderBottom: '1px solid #F0E4CF', padding: '14px 4px' };
 const summary = { fontWeight: 700, cursor: 'pointer', fontSize: 14.5 };
@@ -46,10 +47,42 @@ export default function ProductRoute() {
   }
 
   // `key` resets the gallery index when navigating between products.
-  return <ProductView key={slug} product={product} />;
+  return <ProductView key={slug} product={product} onOpen={refetch} />;
 }
 
-function ProductView({ product }) {
+/**
+ * Ticks a countdown to the opening, and asks the server when it runs out.
+ *
+ * The tick is cosmetic. Reaching zero never enables the buy button on its own
+ * — it refetches the product and lets the server's next answer decide, because
+ * the only clock that may open a sale is the one checkout enforces. A browser
+ * running a few minutes fast would otherwise offer a drop early and hand the
+ * buyer a 409 at the end of a form they had already filled in.
+ *
+ * Nothing is scheduled for a drop that is days away: a page re-rendering every
+ * second for a week costs a phone its battery to say what one line of text
+ * already said. See isImminent.
+ */
+function useOpeningCountdown(product, onOpen) {
+  const [now, setNow] = useState(() => Date.now());
+  const ticking = isScheduled(product) && isImminent(product, now);
+
+  useEffect(() => {
+    if (!ticking) return undefined;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [ticking]);
+
+  const remaining = msUntilOpen(product, now);
+  useEffect(() => {
+    if (remaining === 0) onOpen?.();
+  }, [remaining, onOpen]);
+
+  if (!ticking || remaining === null) return null;
+  return fmtClock(remaining);
+}
+
+function ProductView({ product, onOpen }) {
   const { brand, freeShipping, freeShippingMinLabel } = useConfig();
   const cart = useCart();
   const showToast = useToast();
@@ -72,10 +105,16 @@ function ProductView({ product }) {
   const main = gallery[Math.min(active, gallery.length - 1)];
 
   const stock = stockNote(product);
+  const saleWindow = windowNote(product);
   // The server already accounts for pre-order in sold_out, and re-deriving it
   // from stock here is what used to refuse a made-to-order product.
-  const soldOut = isSoldOut(product);
+  //
+  // `blocked` is what the controls are gated on: sold out, closed, or not open
+  // yet. `label` is the server's reason, rendered rather than guessed.
+  const label = buyLabel(product);
+  const blocked = isSoldOut(product) || Boolean(label);
   const max = maxQty(product);
+  const countdown = useOpeningCountdown(product, onOpen);
 
   const add = (then) => {
     cart.add(product, qty);
@@ -215,6 +254,12 @@ function ProductView({ product }) {
           <p style={{ color: '#8A7D70', fontSize: 15.5, lineHeight: 1.7, margin: '0 0 20px' }}>
             {product.description}
           </p>
+          {saleWindow ? (
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: saleWindow.color, marginBottom: 6 }}>
+              {saleWindow.text}
+              {countdown ? <span style={{ color: '#B4557A' }}> · {countdown}</span> : null}
+            </div>
+          ) : null}
           <div style={{ fontSize: 13.5, fontWeight: 600, color: stock.color, marginBottom: 18 }}>
             {stock.text}
           </div>
@@ -235,7 +280,7 @@ function ProductView({ product }) {
                 type="button"
                 className="hv-cream"
                 onClick={() => setQty((q) => Math.max(1, q - 1))}
-                disabled={soldOut || qty <= 1}
+                disabled={blocked || qty <= 1}
                 aria-label="Kurangi jumlah"
                 style={stepper}
               >
@@ -248,7 +293,7 @@ function ProductView({ product }) {
                 type="button"
                 className="hv-cream"
                 onClick={() => setQty((q) => Math.min(max, q + 1))}
-                disabled={soldOut || qty >= max}
+                disabled={blocked || qty >= max}
                 aria-label="Tambah jumlah"
                 style={stepper}
               >
@@ -259,21 +304,21 @@ function ProductView({ product }) {
               type="button"
               className="hv-primary"
               onClick={() => add()}
-              disabled={soldOut}
+              disabled={blocked}
               style={{
                 flex: 1,
                 minWidth: 200,
-                background: soldOut ? '#E4DACB' : '#D26E8E',
-                color: soldOut ? '#8A7D70' : '#fff',
+                background: blocked ? '#E4DACB' : '#D26E8E',
+                color: blocked ? '#8A7D70' : '#fff',
                 borderRadius: 999,
                 padding: '14px 26px',
                 fontWeight: 700,
                 fontSize: 15,
-                cursor: soldOut ? 'not-allowed' : 'pointer',
-                boxShadow: soldOut ? 'none' : '0 8px 20px rgba(210,110,142,0.3)',
+                cursor: blocked ? 'not-allowed' : 'pointer',
+                boxShadow: blocked ? 'none' : '0 8px 20px rgba(210,110,142,0.3)',
               }}
             >
-              {soldOut ? 'Stok habis' : 'Tambah ke Keranjang'}
+              {blocked ? (label ?? 'Stok habis') : 'Tambah ke Keranjang'}
             </button>
           </div>
 
@@ -281,7 +326,7 @@ function ProductView({ product }) {
             type="button"
             className="hv-butter"
             onClick={() => add(() => navigate('/keranjang'))}
-            disabled={soldOut}
+            disabled={blocked}
             style={{
               width: '100%',
               background: '#F5E6AE',
@@ -291,8 +336,8 @@ function ProductView({ product }) {
               fontWeight: 700,
               fontSize: 15,
               marginBottom: 26,
-              opacity: soldOut ? 0.5 : 1,
-              cursor: soldOut ? 'not-allowed' : 'pointer',
+              opacity: blocked ? 0.5 : 1,
+              cursor: blocked ? 'not-allowed' : 'pointer',
             }}
           >
             Beli Sekarang
