@@ -7,6 +7,7 @@ import OtpModal from '../components/OtpModal.jsx';
 import DestinationPicker from '../components/DestinationPicker.jsx';
 import ShippingRates from '../components/ShippingRates.jsx';
 import { orderNote } from '../lib/preorder.js';
+import { MAX_VOUCHER_LEN, normalizeVoucherInput, voucherLabel, voucherNotes } from '../lib/voucher.js';
 import { destinationSummary } from '../lib/shipping.js';
 import { useCart } from '../cart/CartProvider.jsx';
 import { useCartLines } from '../cart/useCartLines.js';
@@ -67,6 +68,11 @@ function Checkout({ onPlaced }) {
   // The draft is the first server-priced view of this cart, and the review
   // step exists so the buyer approves it before a code is spent.
   const [draft, setDraft] = useState(null);
+  // Kept on the checkout screen, not in the cart: a code belongs to this
+  // attempt at paying, and one left in localStorage would come back weeks
+  // later as a discount the buyer never asked for again. It survives "Ubah
+  // pesanan" because that only clears the draft, not this.
+  const [voucherCode, setVoucherCode] = useState('');
   const [otp, setOtp] = useState(null);
   // Closing the modal must not discard the challenge. The buyer still has a
   // live code in their inbox, and re-sending would spend one of five per hour
@@ -111,6 +117,10 @@ function Checkout({ onPlaced }) {
         // the resolved destination, so an operator reads the same place the
         // parcel was quoted to rather than whatever the buyer typed.
         city: liveShipping ? destinationSummary(destination) : form.city.trim(),
+        // Empty when they typed nothing, which is the ordinary case. The
+        // server answers on the draft rather than refusing it, so a bad code
+        // never costs the buyer the order.
+        voucher_code: voucherCode,
       }),
     onSuccess: (d) => {
       setFormErr('');
@@ -472,6 +482,35 @@ function Checkout({ onPlaced }) {
               })}
             </div>
           </section>
+
+          {/*
+            Optional, and last: a code is something a buyer either has or does
+            not, and putting it above the address would have everyone else
+            wondering whether they were missing one.
+
+            Whether it works is answered on the next screen, beside the total
+            it changes, rather than here. The server prices the code against
+            the finished cart -- after line discounts, after the free-shipping
+            rule -- so anything this field could say on its own would be a
+            guess that the summary might then contradict.
+          */}
+          <section style={card}>
+            <div style={cardTitle}>4 · Punya kode voucher?</div>
+            <input
+              value={voucherCode}
+              onChange={(e) => setVoucherCode(normalizeVoucherInput(e.target.value))}
+              maxLength={MAX_VOUCHER_LEN}
+              autoCapitalize="characters"
+              autoCorrect="off"
+              spellCheck={false}
+              placeholder="Masukkan kode"
+              aria-label="Kode voucher"
+              style={{ ...field, textTransform: 'uppercase', letterSpacing: 0.5 }}
+            />
+            <p style={{ margin: '8px 0 0', fontSize: 12.5, color: '#B7AA9A', lineHeight: 1.6 }}>
+              Boleh dikosongkan. Potongannya muncul di ringkasan sebelum kamu bayar.
+            </p>
+          </section>
         </div>
 
         <aside style={{ ...card, flex: '1 1 300px', minWidth: 280, position: 'sticky', top: 90 }}>
@@ -652,7 +691,10 @@ function Review({
           */}
           {draft.discount_total > 0 ? (
             <SummaryRow
-              label={draft.promotion_name ? `Diskon · ${draft.promotion_name}` : 'Diskon'}
+              label={voucherLabel(
+                draft,
+                draft.promotion_name ? `Diskon · ${draft.promotion_name}` : 'Diskon',
+              )}
               value={`−${fmt(draft.discount_total)}`}
             />
           ) : null}
@@ -699,6 +741,26 @@ function Review({
               {orderNote(draft.preorder_lead_days)}.
             </p>
           ) : null}
+          {/*
+            What happened to the code they typed. Under the total rather than
+            beside the field: a refused code and a code that cost them money
+            both matter at the moment they decide this number is right, and
+            neither has a rupiah value that belongs in a row.
+          */}
+          {voucherNotes(draft).map((n, i) => (
+            <p
+              key={`v${i}`}
+              style={{
+                margin: i === 0 ? '10px 0 0' : 0,
+                fontSize: 12.5,
+                lineHeight: 1.6,
+                fontWeight: n.tone === 'warn' ? 600 : 400,
+                color: n.tone === 'warn' ? '#8A6D1F' : '#B7AA9A',
+              }}
+            >
+              {n.text}
+            </p>
+          ))}
         </div>
 
         <div style={{ marginTop: 16, fontSize: 13.5, color: '#8A7D70', lineHeight: 1.7 }}>

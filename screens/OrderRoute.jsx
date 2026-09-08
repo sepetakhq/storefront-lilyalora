@@ -188,7 +188,16 @@ export default function OrderRoute() {
           */}
           {order.discount_total > 0 ? (
             <Row
-              label={order.promotion_name ? `Diskon · ${order.promotion_name}` : 'Diskon'}
+              // The code wins the label when there was one. It is the part of
+              // the discount the buyer chose and typed, and the only part they
+              // would recognise weeks later on a paid order.
+              label={
+                order.voucher_code
+                  ? `Kode ${order.voucher_code}`
+                  : order.promotion_name
+                    ? `Diskon · ${order.promotion_name}`
+                    : 'Diskon'
+              }
               value={`−${fmt(order.discount_total)}`}
             />
           ) : null}
