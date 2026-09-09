@@ -63,8 +63,14 @@ export const resolveDestination = async (ref, signal) =>
 export const getShippingRates = async (body, signal) =>
   (await apiFetch('/shipping/rates', { method: 'POST', body, signal })).data;
 
+/**
+ * `same-origin`, unlike every other storefront call: the response's
+ * `otp_required` is answered from the trust cookie this browser earned the last
+ * time it verified, and a request that does not send the cookie is a request
+ * that always asks for a code.
+ */
 export const createDraft = async (body, signal) =>
-  (await apiFetch('/checkout/draft', { method: 'POST', body, signal })).data;
+  (await apiFetch('/checkout/draft', { method: 'POST', body, signal, credentials: 'same-origin' })).data;
 
 export const sendCheckoutCode = async (draftId, signal) =>
   (await apiFetch('/checkout/otp/send', { method: 'POST', body: { draft_id: draftId }, signal })).data;
@@ -80,6 +86,10 @@ export const verifyCheckoutCode = (draftId, code, idempotencyKey, signal) =>
     body: { draft_id: draftId, code },
     idempotencyKey,
     signal,
+    // Both directions matter here: the request carries the trust cookie that
+    // can stand in for the code, and the response sets a fresh one when a code
+    // was actually accepted.
+    credentials: 'same-origin',
   });
 
 export async function trackOrder(token, signal) {

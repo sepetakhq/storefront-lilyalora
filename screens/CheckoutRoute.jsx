@@ -15,7 +15,14 @@ import { useConfig } from '../config/ConfigProvider.jsx';
 import { createDraft, sendCheckoutCode, verifyCheckoutCode } from '../api/endpoints.js';
 import { qk } from '../api/queryKeys.js';
 import { fmt } from '../shared/format.js';
-import { contactField, normalizeContact, validateContact } from '../lib/contact.js';
+import {
+  CHANNEL_WHATSAPP,
+  contactField,
+  normalizeContact,
+  normalizePhone,
+  validateContact,
+  validatePhone,
+} from '../lib/contact.js';
 import { clearCheckout, keyForAttempt, resetKeyForAttempt, saveCheckout } from '../checkout/checkoutStorage.js';
 import { recordRetryAfter, recordSend, clearCooldown } from '../checkout/otpCooldown.js';
 import { rememberOrder } from '../checkout/orderTokens.js';
@@ -34,7 +41,7 @@ const field = {
 
 // Server-side caps, counted in runes. Enforced here so the buyer is told
 // before a round-trip, not after.
-const LIMITS = { customer_name: 120, address: 500, city: 80, contact: 254 };
+const LIMITS = { customer_name: 120, address: 500, city: 80, contact: 254, phone: 20 };
 
 export default function CheckoutRoute() {
   const cart = useCart();
@@ -54,7 +61,7 @@ function Checkout({ onPlaced }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const [form, setForm] = useState({ customer_name: '', contact: '', address: '', city: '' });
+  const [form, setForm] = useState({ customer_name: '', contact: '', phone: '', address: '', city: '' });
   const [courier, setCourier] = useState(() => couriers[0]?.code ?? '');
   const [method, setMethod] = useState(() => paymentMethods[0]?.code ?? '');
   const [formErr, setFormErr] = useState('');
@@ -80,6 +87,9 @@ function Checkout({ onPlaced }) {
   const [otpOpen, setOtpOpen] = useState(false);
 
   const contactMeta = contactField(contactChannel);
+  // Whether the courier's number needs its own field. Under a WhatsApp tenant
+  // the contact already is it, and the server derives one from the other.
+  const phoneAsked = contactChannel !== CHANNEL_WHATSAPP;
   const setField = (e) => {
     // Clear the banner as soon as the buyer starts fixing it — leaving it up
     // while they type reads as though the correction did not register.
@@ -112,6 +122,10 @@ function Checkout({ onPlaced }) {
         payment_method: method,
         contact: normalizeContact(contactChannel, form.contact),
         customer_name: form.customer_name.trim(),
+        // Normalised here as well as on the server, so what the buyer sees
+        // echoed anywhere is the one shape the order will carry. Empty under a
+        // WhatsApp tenant, where the server takes the contact instead.
+        phone: phoneAsked ? normalizePhone(form.phone) : '',
         address: form.address.trim(),
         // The city the order is filed under. Under live rates it comes from
         // the resolved destination, so an operator reads the same place the
@@ -221,6 +235,19 @@ function Checkout({ onPlaced }) {
   }
 
   function handleVerifyError(err) {
+    // The one verification failure that names itself: the browser was trusted
+    // when the draft was priced and is not any more. Nothing was guessed and
+    // nothing leaks, so the buyer is sent to the ordinary code flow rather than
+    // told a code they never typed was wrong.
+    if (err?.code === 'otp_required') {
+      setFormErr('');
+      sendMutation.mutate();
+      return;
+    }
+    if (err?.status === 429) {
+      setFormErr(err.message);
+      return;
+    }
     // Wrong code, expired code, too many attempts and a code bound to another
     // draft are one indistinguishable 400 by design — so the UI must not
     // promise a reason.
@@ -270,6 +297,7 @@ function Checkout({ onPlaced }) {
       liveShipping,
       destination,
       contactLabel: contactField(contactChannel).label,
+      phoneAsked,
     });
     if (missing.length > 0) {
       return setFormErr(`Lengkapi ${listPhrase(missing)} dulu ya.`);
@@ -283,6 +311,10 @@ function Checkout({ onPlaced }) {
     // what was typed rather than its absence.
     const contactErr = validateContact(contactChannel, form.contact);
     if (contactErr) return setFormErr(contactErr);
+    if (phoneAsked) {
+      const phoneErr = validatePhone(form.phone);
+      if (phoneErr) return setFormErr(phoneErr);
+    }
 
     setFormErr('');
     draftMutation.mutate();
@@ -311,6 +343,12 @@ function Checkout({ onPlaced }) {
           setOtpOpen(true);
         }}
         onVerify={(code) => verifyMutation.mutate(code)}
+        // No code to send: the trust cookie stands in for one, and the server
+        // decides again whether it still does.
+        onPlace={() => {
+          setFormErr('');
+          verifyMutation.mutate('');
+        }}
         onCancelOtp={() => setOtpOpen(false)}
         onEdit={() => resetDraft('')}
         onExpire={() => resetDraft('Checkout kedaluwarsa. Ulangi ya.')}
@@ -375,6 +413,24 @@ function Checkout({ onPlaced }) {
                 maxLength={LIMITS.contact}
                 style={field}
               />
+              {/* Hidden under a WhatsApp tenant, where the contact field above
+                  already is the buyer's number: two inputs that must agree and
+                  nothing making them agree. The server collapses the same way
+                  -- see draftPhone. */}
+              {!phoneAsked ? null : (
+                <input
+                  name="phone"
+                  value={form.phone}
+                  onChange={setField}
+                  placeholder="08xx xxxx xxxx"
+                  aria-label="Nomor HP"
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  maxLength={LIMITS.phone}
+                  style={field}
+                />
+              )}
             </div>
             <textarea
               name="address"
@@ -613,13 +669,16 @@ function Review({
   onSend,
   onReopenOtp,
   onVerify,
+  onPlace,
   onCancelOtp,
   onEdit,
   onExpire,
 }) {
   // A code already sent and still inside its five-minute window is the one the
   // buyer should be typing, not a reason to request another.
-  const liveCode = otp && Date.parse(otp.expiresAt) > Date.now();
+  const step = confirmStep({ otpRequired: draft.otp_required, otp });
+  const liveCode = step === 'reopen';
+  const skipsCode = step === 'place';
   const changed = draft.lines.filter((l) => {
     const before = cartPrices.get(l.product_id);
     return before !== undefined && before !== l.unit_price;
@@ -766,7 +825,18 @@ function Review({
         <div style={{ marginTop: 16, fontSize: 13.5, color: '#8A7D70', lineHeight: 1.7 }}>
           Bayar dengan <strong style={{ color: '#43382E' }}>{method?.name}</strong>
           <br />
-          Kode verifikasi dikirim ke <strong style={{ color: '#43382E' }}>{draft.contact.masked}</strong>
+          {/* Promising a code that is never sent is worse than saying nothing:
+              the buyer would sit waiting for an email while their order is
+              already placed. */}
+          {skipsCode ? (
+            <>
+              Konfirmasi dikirim ke <strong style={{ color: '#43382E' }}>{draft.contact.masked}</strong>
+            </>
+          ) : (
+            <>
+              Kode verifikasi dikirim ke <strong style={{ color: '#43382E' }}>{draft.contact.masked}</strong>
+            </>
+          )}
         </div>
 
         <div style={{ marginTop: 10, fontSize: 12.5, color: '#B7AA9A' }}>
@@ -782,11 +852,19 @@ function Review({
         <button
           type="button"
           className="hv-primary"
-          onClick={liveCode ? onReopenOtp : onSend}
-          disabled={sending}
-          style={{ ...primaryButton, marginTop: 18, opacity: sending ? 0.6 : 1 }}
+          onClick={skipsCode ? onPlace : liveCode ? onReopenOtp : onSend}
+          disabled={sending || verifying}
+          style={{ ...primaryButton, marginTop: 18, opacity: sending || verifying ? 0.6 : 1 }}
         >
-          {sending ? 'Mengirim…' : liveCode ? 'Masukkan kode' : 'Kirim kode verifikasi'}
+          {skipsCode
+            ? verifying
+              ? 'Membuat pesanan…'
+              : 'Buat pesanan'
+            : sending
+              ? 'Mengirim…'
+              : liveCode
+                ? 'Masukkan kode'
+                : 'Kirim kode verifikasi'}
         </button>
         <button
           type="button"
@@ -912,6 +990,7 @@ const LABELS = {
   address: 'Alamat',
   city: 'Kota',
   contact: 'Kontak',
+  phone: 'Nomor HP',
 };
 
 /**
@@ -922,11 +1001,15 @@ const LABELS = {
  *
  * The destination is a picked object under live rates and free text under flat
  * ones, so the two modes disagree on the label as well as the check.
+ *
+ * phoneAsked is false under a WhatsApp tenant, where the contact field already
+ * holds the number and no second input is rendered to leave empty.
  */
-export function missingFields({ form, liveShipping, destination, contactLabel }) {
+export function missingFields({ form, liveShipping, destination, contactLabel, phoneAsked = true }) {
   const out = [];
   if (!form.customer_name.trim()) out.push(LABELS.customer_name.toLowerCase());
   if (!String(form.contact ?? '').trim()) out.push(contactLabel.toLowerCase());
+  if (phoneAsked && !String(form.phone ?? '').trim()) out.push(LABELS.phone.toLowerCase());
   if (!form.address.trim()) out.push(LABELS.address.toLowerCase());
   if (liveShipping) {
     if (!destination) out.push('tujuan pengiriman');
@@ -934,6 +1017,28 @@ export function missingFields({ form, liveShipping, destination, contactLabel })
     out.push(LABELS.city.toLowerCase());
   }
   return out;
+}
+
+/**
+ * Which of the three things the confirm button does.
+ *
+ * Exported for its own test, for the same reason missingFields is: it decides
+ * what the buyer is offered, and the OTP step had no coverage at all.
+ *
+ *   'reopen'  a code is already sent and still inside its window. It wins over
+ *             a skip: one that was paid for should be spent rather than
+ *             abandoned, and the server re-checks the cookie either way.
+ *   'place'   this browser already proved this address recently, so there is
+ *             no code to send and nothing to type. See trust.go.
+ *   'send'    the ordinary path.
+ *
+ * `otpRequired` is absent on a response from an older API, which reads as
+ * undefined and therefore as 'send' -- the behaviour before any of this
+ * existed.
+ */
+export function confirmStep({ otpRequired, otp, now = Date.now() }) {
+  if (otp && Date.parse(otp.expiresAt) > now) return 'reopen';
+  return otpRequired === false ? 'place' : 'send';
 }
 
 /** "nama, alamat, dan kota" — an Indonesian list, serial "dan", no comma. */

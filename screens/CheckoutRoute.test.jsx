@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  confirmStep,
   estimatePaymentFee,
   estimateShipping,
   listPhrase,
@@ -9,10 +10,11 @@ import {
   outOfRangeReason,
 } from './CheckoutRoute.jsx';
 
-const empty = { customer_name: '', contact: '', address: '', city: '' };
+const empty = { customer_name: '', contact: '', phone: '', address: '', city: '' };
 const full = {
   customer_name: 'Siti',
   contact: 'siti@buyer.test',
+  phone: '08123456789',
   address: 'Jl. Melati 12',
   city: 'Pekalongan',
 };
@@ -28,7 +30,7 @@ describe('missingFields', () => {
       destination: null,
       contactLabel: 'Email',
     });
-    expect(got).toEqual(['nama', 'email', 'alamat', 'kota']);
+    expect(got).toEqual(['nama', 'email', 'nomor hp', 'alamat', 'kota']);
   });
 
   it('is empty when the form is complete', () => {
@@ -66,12 +68,72 @@ describe('missingFields', () => {
   it('treats whitespace as empty', () => {
     expect(
       missingFields({
-        form: { customer_name: '  ', contact: ' ', address: '\t', city: ' ' },
+        form: { customer_name: '  ', contact: ' ', phone: ' ', address: '\t', city: ' ' },
         liveShipping: false,
         destination: null,
         contactLabel: 'Email',
       }),
-    ).toHaveLength(4);
+    ).toHaveLength(5);
+  });
+
+  // The phone sits between the contact and the address on screen, and this
+  // function exists to name fields in the order the buyer will find them.
+  it('names the phone where it appears, after the contact', () => {
+    const got = missingFields({
+      form: { ...full, contact: '', phone: '' },
+      liveShipping: false,
+      destination: null,
+      contactLabel: 'Email',
+    });
+    expect(got).toEqual(['email', 'nomor hp']);
+  });
+
+  // Under a WhatsApp tenant the contact field already holds the number, so no
+  // second input is rendered and none can be left empty.
+  it('does not ask for a phone when the contact channel is the phone', () => {
+    const got = missingFields({
+      form: { ...full, phone: '' },
+      liveShipping: false,
+      destination: null,
+      contactLabel: 'Nomor WhatsApp',
+      phoneAsked: false,
+    });
+    expect(got).toEqual([]);
+  });
+});
+
+// The OTP step had no coverage at all before the trust cookie existed, and it
+// is the highest-consequence path in the app: the track token is returned once
+// and is unrecoverable.
+describe('confirmStep', () => {
+  const live = { expiresAt: new Date(2_000_000_000_000).toISOString() };
+  const dead = { expiresAt: new Date(1_000_000_000_000).toISOString() };
+  const now = 1_500_000_000_000;
+
+  it('sends a code when nothing says otherwise', () => {
+    expect(confirmStep({ otpRequired: true, otp: null, now })).toBe('send');
+  });
+
+  it('places straight away when the server says no code is needed', () => {
+    expect(confirmStep({ otpRequired: false, otp: null, now })).toBe('place');
+  });
+
+  // A code already paid for should be spent, not abandoned, and the server
+  // re-checks the trust cookie either way.
+  it('prefers a code already in flight over skipping', () => {
+    expect(confirmStep({ otpRequired: false, otp: live, now })).toBe('reopen');
+    expect(confirmStep({ otpRequired: true, otp: live, now })).toBe('reopen');
+  });
+
+  it('ignores a code that has already expired', () => {
+    expect(confirmStep({ otpRequired: true, otp: dead, now })).toBe('send');
+    expect(confirmStep({ otpRequired: false, otp: dead, now })).toBe('place');
+  });
+
+  // An older API answers without the field at all, which has to read as the
+  // behaviour that existed before the field did.
+  it('asks for a code when the response never mentioned one', () => {
+    expect(confirmStep({ otpRequired: undefined, otp: null, now })).toBe('send');
   });
 });
 

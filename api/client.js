@@ -17,7 +17,7 @@ export const API_BASE = import.meta.env.VITE_API_BASE || '/api/v1';
 //
 // The server keeps serving this shape for as long as it is listed in
 // backend/internal/apiversion/releases.go, whatever else ships in between.
-export const API_VERSION = '2026-09-05';
+export const API_VERSION = '2026-09-09';
 
 // Copy for the failures the server never gets to describe itself.
 const NETWORK_MESSAGE = 'Koneksi terputus. Periksa internetmu, lalu coba lagi.';
@@ -98,10 +98,11 @@ function parseRetryAfter(res) {
  *   it exists so the backoffice can attach its CSRF token without this module
  *   knowing anything about sessions or where they are kept.
  * @param {'omit'|'include'|'same-origin'} [options.credentials]
- *   Defaults to 'omit', which is what the storefront wants: order access there
- *   is a capability token in the URL, so there is nothing for a browser to
- *   attach. The backoffice passes 'include' to send its session cookie, and
- *   the API allows credentials on admin paths only.
+ *   Defaults to 'omit', which is what most of the storefront wants: order
+ *   access there is a capability token in the URL, so there is nothing for a
+ *   browser to attach. The two checkout calls pass 'same-origin' to carry the
+ *   trust cookie that lets a browser which already verified skip the code, and
+ *   the backoffice passes 'include' to send its session cookie.
  */
 export async function apiFetch(
   path,
