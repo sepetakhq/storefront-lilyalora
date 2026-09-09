@@ -8,9 +8,45 @@ afterEach(cleanup);
 // The rate list itself needs a QueryClient and a live endpoint; the failure
 // panel needs neither, and the failure panel is what has been getting this
 // wrong. Imported through the module under test so the export stays honest.
-const { RateProblem } = await import('./ShippingRates.jsx');
+const { RateProblem, RateTile } = await import('./ShippingRates.jsx');
 
 import { ApiError } from '../api/client.js';
+
+const option = (extra) => ({
+  quote_id: 'q1',
+  courier_code: 'jntcargo',
+  courier_service: 'REG',
+  name: 'Reguler',
+  cost: 12000,
+  etd: '2-3 hari',
+  ...extra,
+});
+
+// The storefront keeps no courier catalogue, so whatever the server sends is
+// what the buyer reads. Before courier_name existed this printed the raw code,
+// and a merchant saw "JNTCARGO" at checkout beside "J&T Cargo" in their own
+// backoffice.
+describe('RateTile', () => {
+  it('names the courier the way the server does', () => {
+    render(<RateTile option={option({ courier_name: 'J&T Cargo' })} onClick={() => {}} />);
+    expect(screen.getByText(/J&T Cargo/)).toBeTruthy();
+  });
+
+  // A code outside the catalogue is a label the merchant typed under flat
+  // pricing, so the row still has to render rather than go blank.
+  it('falls back to the code when the server names no courier', () => {
+    render(<RateTile option={option({ courier_name: '' })} onClick={() => {}} />);
+    expect(screen.getByText(/JNTCARGO/)).toBeTruthy();
+  });
+
+  // The old code called .toUpperCase() unguarded, so a row missing its code
+  // threw while rendering the whole rate list.
+  it('does not throw when the option carries no courier code at all', () => {
+    expect(() =>
+      render(<RateTile option={option({ courier_code: undefined })} onClick={() => {}} />),
+    ).not.toThrow();
+  });
+});
 
 describe('RateProblem', () => {
   // The regression this file exists for.

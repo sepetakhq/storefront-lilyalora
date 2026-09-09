@@ -122,7 +122,9 @@ export default function ShippingRates({ destination, items, selected, onSelect, 
  * thousand rupiah and the delivery times differ by days. The cost is
  * right-aligned in the body face, where a number is read rather than compared.
  */
-function RateTile({ option, free, selected, onClick }) {
+// Exported for the same reason RateProblem is: the row can be rendered on its
+// own, and how a courier is named is worth asserting without a live endpoint.
+export function RateTile({ option, free, selected, onClick }) {
   const { value, unit } = splitEtd(option.etd);
 
   return (
@@ -163,8 +165,13 @@ function RateTile({ option, free, selected, onClick }) {
         <span style={{ display: 'block', fontSize: 14.5, fontWeight: 700, color: '#43382E' }}>
           {option.name}
         </span>
+        {/* The server names the courier from its own catalogue; the code is
+            the fallback for one it does not carry, which under flat pricing is
+            a label the merchant typed. Rendering the code alone is how buyers
+            came to read "JNTCARGO" while the backoffice said "J&T Cargo". */}
         <span style={{ display: 'block', fontSize: 12.5, color: '#8A7D70' }}>
-          {option.courier_code.toUpperCase()} · {option.courier_service}
+          {option.courier_name || (option.courier_code ?? '').toUpperCase()} ·{' '}
+          {option.courier_service}
         </span>
       </span>
 
