@@ -137,29 +137,15 @@ function DocumentTitle() {
   return null;
 }
 
-/** Shown while the tenant's brand identity loads — the whole shell depends on it. */
+/**
+ * Shown while the tenant's brand identity loads — the whole shell depends on it.
+ *
+ * Deliberately wordless. This is ConfigProvider's own fallback, so it renders
+ * outside the context it is waiting for and cannot know whose shop this is;
+ * anything it named would be one particular merchant's, shown to all of them.
+ */
 function Splash() {
-  return (
-    <div
-      style={{
-        minHeight: '100vh',
-        display: 'grid',
-        placeItems: 'center',
-        background: '#FFFDF7',
-      }}
-    >
-      <span
-        style={{
-          fontFamily: "'Cormorant Garamond',serif",
-          fontStyle: 'italic',
-          fontSize: 30,
-          color: '#E0CDB4',
-        }}
-      >
-        Lily Alora
-      </span>
-    </div>
-  );
+  return <div style={{ minHeight: '100vh', background: '#FFFDF7' }} />;
 }
 
 /**
