@@ -1,0 +1,33 @@
+{
+  "note": "The contract between promo.NormalizeCode and src/shared/voucher.js. Read by backend/internal/promo/voucher_test.go and src/shared/voucher.test.js, so neither side can change the rule alone. Add a case here before changing either implementation.",
+  "cases": [
+    { "why": "already canonical", "raw": "HEMAT15", "normalized": "HEMAT15" },
+    { "why": "lowercase is uppercased", "raw": "hemat15", "normalized": "HEMAT15" },
+    { "why": "an interior hyphen is part of the alphabet", "raw": "hemat-15", "normalized": "HEMAT-15" },
+    { "why": "ordinary spaces go", "raw": "  HEMAT 15  ", "normalized": "HEMAT15" },
+    {
+      "why": "a zero-width space is not whitespace to TrimSpace, which is why the rule is a filter and not a trim",
+      "raw": "HEMAT​15",
+      "normalized": "HEMAT15"
+    },
+    {
+      "why": "the ligature must be dropped, not case-folded into FI -- this is why the filter runs before the uppercase",
+      "raw": "HEMATﬁ15",
+      "normalized": "HEMAT15"
+    },
+    {
+      "why": "Turkish dotless i uppercases to an ASCII I in JS; Go never sees it. Dropped by both.",
+      "raw": "HEMATı15",
+      "normalized": "HEMAT15"
+    },
+    { "why": "punctuation is outside the alphabet", "raw": "HEMAT_15!", "normalized": "HEMAT15" },
+    { "why": "emoji pasted from a bio", "raw": "HEMAT🎉15", "normalized": "HEMAT15" },
+    { "why": "empty stays empty", "raw": "", "normalized": "" },
+    { "why": "nothing survivable is empty, not an error", "raw": "!!!", "normalized": "" },
+    {
+      "why": "normalizing does not truncate -- length is ValidCode's job, and silently cutting would store a code the merchant did not type",
+      "raw": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "normalized": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    }
+  ]
+}
