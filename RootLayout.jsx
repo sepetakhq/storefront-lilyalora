@@ -4,6 +4,7 @@ import { Link, Outlet, ScrollRestoration, useLocation } from 'react-router-dom';
 import Header from './components/Header.jsx';
 import Footer from './components/Footer.jsx';
 import Toast from './components/Toast.jsx';
+import UpdateBanner from './components/UpdateBanner.jsx';
 import { ConfigProvider } from './config/ConfigProvider.jsx';
 import { CartProvider } from './cart/CartProvider.jsx';
 import { ToastProvider } from './ui/ToastProvider.jsx';
@@ -40,6 +41,7 @@ function Shell() {
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <ScrollRestoration />
       <DocumentTitle />
+      <UpdateBanner />
       <Announcement />
       <Header
         isMobile={isMobile}
