@@ -15,6 +15,7 @@ import { useConfig } from '../config/ConfigProvider.jsx';
 import { createDraft, sendCheckoutCode, verifyCheckoutCode } from '../api/endpoints.js';
 import { qk } from '../api/queryKeys.js';
 import { fmt } from '../shared/format.js';
+import { confirmStep, estimatePaymentFee, estimateShipping, methodFits } from '../lib/checkout.js';
 import {
   CHANNEL_WHATSAPP,
   contactField,
@@ -925,51 +926,9 @@ function SummaryRow({ label, value }) {
   );
 }
 
-/**
- * Mirrors the server's rule so the estimate does not contradict the draft.
- *
- * `free` is the whole offer -- `{ enabled, min }` -- because the threshold
- * alone cannot express a shop that has withdrawn it: a min of zero means every
- * order ships free, so "off" has to be its own flag on both sides of the wire.
- */
-/**
- * What paying with this method will add, before the draft says for certain.
- *
- * A three-line mirror of payment.ChannelFee.On, rounding up for the same
- * reason it does. The rate the server sends is one combined number -- the
- * gateway's cut and the platform's margin already folded together -- and it is
- * rounded up to a whole basis point, so this lands a few rupiah *above* the
- * authoritative fee rather than below it. That direction is deliberate: a
- * buyer shown a slightly high estimate and then charged less has been treated
- * fairly, and the reverse has not.
- *
- * Advisory, exactly like estimateShipping. The number that actually charges
- * anyone comes from the draft.
- */
-export function estimatePaymentFee(base, method) {
-  const flat = method?.fee_flat ?? 0;
-  const bps = method?.fee_basis_pt ?? 0;
-  if (!flat && !bps) return 0;
-  if (!(base > 0)) return flat;
-  return flat + Math.ceil((base * bps) / 10000);
-}
-
-/**
- * Whether this cart is within what the method's channel accepts.
- *
- * The bounds arrive already expressed in order-value terms -- the server
- * inverts the gross-up in payment.MinBase and MaxBase -- so this compares like
- * with like and never has to reason about the fee itself. Zero means the
- * channel states no bound, which is not the same as a bound of nothing.
- */
-export function methodFits(method, base) {
-  if (!(base > 0)) return true;
-  const min = method?.min_order_total ?? 0;
-  const max = method?.max_order_total ?? 0;
-  if (min > 0 && base < min) return false;
-  if (max > 0 && base > max) return false;
-  return true;
-}
+// The arithmetic lives in src/lib/checkout.js, shared with every storefront
+// bundle; re-exported here so this screen's test keeps its seam.
+export { confirmStep, estimatePaymentFee, estimateShipping, methodFits };
 
 /** Why this cart cannot use this method, in the buyer's terms. */
 export function outOfRangeReason(method, base) {
@@ -978,11 +937,6 @@ export function outOfRangeReason(method, base) {
   if (min > 0 && base < min) return `Minimal ${fmt(min)} untuk metode ini.`;
   if (max > 0 && base > max) return `Maksimal ${fmt(max)} untuk metode ini.`;
   return '';
-}
-
-export function estimateShipping(subtotal, courier, free) {
-  if (!courier) return 0;
-  return free.enabled && subtotal >= free.min ? 0 : courier.cost;
 }
 
 const LABELS = {
@@ -1017,28 +971,6 @@ export function missingFields({ form, liveShipping, destination, contactLabel, p
     out.push(LABELS.city.toLowerCase());
   }
   return out;
-}
-
-/**
- * Which of the three things the confirm button does.
- *
- * Exported for its own test, for the same reason missingFields is: it decides
- * what the buyer is offered, and the OTP step had no coverage at all.
- *
- *   'reopen'  a code is already sent and still inside its window. It wins over
- *             a skip: one that was paid for should be spent rather than
- *             abandoned, and the server re-checks the cookie either way.
- *   'place'   this browser already proved this address recently, so there is
- *             no code to send and nothing to type. See trust.go.
- *   'send'    the ordinary path.
- *
- * `otpRequired` is absent on a response from an older API, which reads as
- * undefined and therefore as 'send' -- the behaviour before any of this
- * existed.
- */
-export function confirmStep({ otpRequired, otp, now = Date.now() }) {
-  if (otp && Date.parse(otp.expiresAt) > now) return 'reopen';
-  return otpRequired === false ? 'place' : 'send';
 }
 
 /** "nama, alamat, dan kota" — an Indonesian list, serial "dan", no comma. */
