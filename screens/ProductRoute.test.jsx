@@ -190,4 +190,16 @@ describe('ProductRoute detail panel', () => {
     // stock note above the buy button names the same number.
     expect(screen.getByText(/Perkiraan siap kirim ±8 hari/)).toBeTruthy();
   });
+
+  // The crash the browser found: stockNote is null for unlimited stock and
+  // the page read `.color` off it. No note, no badge, and the page renders.
+  it('renders an unlimited product at zero stock with no stock note', () => {
+    withProduct({ unlimited_stock: true, stock: 0 });
+    panel();
+
+    expect(screen.queryByText(/Stok habis/)).toBeNull();
+    expect(screen.queryByText(/Stok tersedia/)).toBeNull();
+    expect(screen.queryByText(/PRE-ORDER/)).toBeNull();
+    expect(screen.getByText('Voal Butter Daisy')).toBeTruthy();
+  });
 });

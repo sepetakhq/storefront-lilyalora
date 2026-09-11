@@ -286,9 +286,13 @@ function ProductView({ product, onOpen }) {
               {countdown ? <span style={{ color: '#B4557A' }}> · {countdown}</span> : null}
             </div>
           ) : null}
-          <div style={{ fontSize: 13.5, fontWeight: 600, color: stock.color, marginBottom: 18 }}>
-            {stock.text}
-          </div>
+          {/* Null for unlimited stock: there is no count to quote and no
+              promise to state, so the line is simply absent. */}
+          {stock ? (
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: stock.color, marginBottom: 18 }}>
+              {stock.text}
+            </div>
+          ) : null}
 
           <div
             style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14 }}

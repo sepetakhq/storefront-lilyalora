@@ -24,6 +24,7 @@ import {
   splitUniqueCode,
 } from '../lib/payment.js';
 import { useToast } from '../ui/ToastProvider.jsx';
+import { orderMessage, waLink } from '../lib/whatsapp.js';
 
 // QrCode is lazy because it pulls in an encoder; QrImage is not, because it
 // has nothing to pull in and deferring it would only delay the image request.
@@ -382,11 +383,14 @@ export function PaymentPanel({
         <ManualTransferBlock payment={payment} brand={brand} onCopy={copy} />
       ) : payment.kind === 'manual_qris' ? (
         <ManualQrisBlock payment={payment} brand={brand} />
+      ) : payment.kind === 'manual_whatsapp' ? (
+        <WhatsAppBlock payment={payment} order={order} brand={brand} />
       ) : null}
 
       {isManualPayment(payment) ? (
         <ManualClaim
           order={order}
+          kind={payment.kind}
           onClaim={onClaim}
           claiming={claiming}
           claimError={claimError}
@@ -764,6 +768,69 @@ function ManualQrisBlock({ payment, brand }) {
 }
 
 /**
+ * The order handed to the merchant as the first message of a chat.
+ *
+ * The message is shown before the button, in full, because the buyer is about
+ * to send it under their own name: nothing in it should be a surprise, and a
+ * buyer who can read it will trust the button. The tracking link inside it is
+ * this page's own URL, so the merchant lands where the buyer is looking.
+ */
+function WhatsAppBlock({ payment, order, brand }) {
+  const phone = payment.manual_whatsapp_phone;
+  if (!phone) {
+    return <ManualUnset brand={brand} />;
+  }
+  const message = orderMessage(order, typeof window === 'undefined' ? '' : window.location.href);
+  const href = waLink(phone, message);
+
+  return (
+    <div>
+      <div style={{ fontSize: 13, color: '#8A7D70' }}>
+        Pesanan ini dikirim ke penjual lewat WhatsApp. Ongkir dan cara bayar disepakati di sana.
+      </div>
+      <div
+        style={{
+          background: '#FDF6E3',
+          border: '1px solid #F0E4CF',
+          borderRadius: '16px 16px 16px 4px',
+          padding: '14px 16px',
+          marginTop: 10,
+          fontSize: 13,
+          lineHeight: 1.65,
+          color: '#43382E',
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-word',
+        }}
+      >
+        {message}
+      </div>
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          display: 'block',
+          marginTop: 14,
+          padding: '13px 18px',
+          borderRadius: 14,
+          background: '#B4557A',
+          color: '#FFF',
+          fontWeight: 700,
+          fontSize: 14.5,
+          textAlign: 'center',
+          textDecoration: 'none',
+        }}
+      >
+        Buka WhatsApp
+      </a>
+      <p style={{ fontSize: 12.5, color: '#B7AA9A', lineHeight: 1.7, margin: '8px 0 0' }}>
+        Pesannya sudah terisi — tinggal kirim.
+      </p>
+    </div>
+  );
+}
+
+/**
  * A manual method whose account has gone missing.
  *
  * The same shape as the QRIS dead end above, and for the same reason: the
@@ -808,7 +875,10 @@ function ManualUnset({ brand }) {
  * the order's deadline out once so a transfer made near the end is not expired
  * while it is in flight.
  */
-function ManualClaim({ order, onClaim, claiming, claimError, canClaim }) {
+function ManualClaim({ order, kind, onClaim, claiming, claimError, canClaim }) {
+  // A chat has no bank statement to check against and no transfer form to
+  // send from, so the two sentences that assume one are swapped.
+  const chat = kind === 'manual_whatsapp';
   if (order.buyer_claimed_at) {
     return (
       <div
@@ -822,8 +892,9 @@ function ManualClaim({ order, onClaim, claiming, claimError, canClaim }) {
       >
         <div style={{ fontWeight: 700, fontSize: 14 }}>Menunggu konfirmasi penjual</div>
         <p style={{ fontSize: 13.5, color: '#6E5B45', lineHeight: 1.7, margin: '6px 0 0' }}>
-          Terima kasih — penjual akan mencocokkannya dengan mutasi rekening mereka. Status pesanan
-          ini berubah sendiri begitu dikonfirmasi.
+          {chat
+            ? 'Terima kasih — penjual akan mengeceknya di percakapan WhatsApp kalian. Status pesanan ini berubah sendiri begitu dikonfirmasi.'
+            : 'Terima kasih — penjual akan mencocokkannya dengan mutasi rekening mereka. Status pesanan ini berubah sendiri begitu dikonfirmasi.'}
         </p>
       </div>
     );
@@ -841,8 +912,12 @@ function ManualClaim({ order, onClaim, claiming, claimError, canClaim }) {
           width: '100%',
           padding: '13px 18px',
           borderRadius: 14,
-          background: claiming ? '#E8C9D6' : '#B4557A',
-          color: '#FFF',
+          // Outlined under a chat, where "Buka WhatsApp" above it is the one
+          // thing to press first; filled everywhere else, where it is.
+          background: chat ? 'transparent' : claiming ? '#E8C9D6' : '#B4557A',
+          border: chat ? '1.5px solid #B4557A' : 'none',
+          color: chat ? '#B4557A' : '#FFF',
+          opacity: chat && claiming ? 0.6 : 1,
           fontWeight: 700,
           fontSize: 14.5,
           cursor: claiming ? 'default' : 'pointer',
@@ -851,8 +926,9 @@ function ManualClaim({ order, onClaim, claiming, claimError, canClaim }) {
         {claiming ? 'Mengirim…' : 'Saya sudah bayar'}
       </button>
       <p style={{ fontSize: 12.5, color: '#B7AA9A', lineHeight: 1.7, margin: '8px 0 0' }}>
-        Tekan setelah transfer terkirim. Penjual mengeceknya sendiri, jadi tidak perlu unggah
-        bukti.
+        {chat
+          ? 'Tekan setelah pembayaran yang disepakati di WhatsApp sudah dikirim. Penjual mengeceknya sendiri.'
+          : 'Tekan setelah transfer terkirim. Penjual mengeceknya sendiri, jadi tidak perlu unggah bukti.'}
       </p>
       {claimError ? (
         <p role="alert" style={{ fontSize: 13, color: '#C0392B', margin: '8px 0 0' }}>
@@ -933,9 +1009,9 @@ function Timeline({ order }) {
         <p style={{ fontSize: 14, color: '#8A7D70', lineHeight: 1.7, margin: '0 0 18px' }}>
           {order.status === 'expired'
             ? // The restock sentence is only true of lines that reserved
-              // stock. An all-pre-order order returned nothing, because it
-              // never took anything.
-              order.lines?.every((l) => l.preorder)
+              // stock. An order of only pre-order or unlimited lines returned
+              // nothing, because it never took anything.
+              order.lines?.every((l) => l.preorder || l.unlimited_stock)
               ? 'Pesanan ini kedaluwarsa karena pembayaran tidak masuk tepat waktu.'
               : 'Pesanan ini kedaluwarsa karena pembayaran tidak masuk tepat waktu. Stoknya sudah dikembalikan.'
             : 'Pesanan ini dibatalkan.'}

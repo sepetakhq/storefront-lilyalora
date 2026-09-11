@@ -120,6 +120,30 @@ describe('PaymentPanel renders every kind the backend can emit', () => {
     expect(screen.getByText(/Nominalnya diisi sendiri/)).toBeTruthy();
     expect(screen.queryByText(DEAD_END)).toBeNull();
   });
+
+  it('manual_whatsapp: opens a chat with the order already typed in', () => {
+    panel({
+      kind: 'manual_whatsapp',
+      method: 'MANUAL_WHATSAPP',
+      amount: 75000,
+      manual_whatsapp_phone: '6281234567890',
+    });
+
+    const link = screen.getByText('Buka WhatsApp').closest('a');
+    expect(link.getAttribute('href')).toMatch(/^https:\/\/wa\.me\/6281234567890\?text=/);
+    expect(decodeURIComponent(link.getAttribute('href'))).toContain('#LA-260830-0001');
+    // The buyer reads what they are about to send.
+    expect(screen.getByText(/Halo, saya mau pesan #LA-260830-0001/)).toBeTruthy();
+    // And none of the account chrome: nothing to copy, no unique code.
+    expect(screen.queryByText('Salin')).toBeNull();
+    expect(screen.queryByText(DEAD_END)).toBeNull();
+  });
+
+  it('manual_whatsapp: falls back when the number is gone', () => {
+    panel({ kind: 'manual_whatsapp', method: 'MANUAL_WHATSAPP', amount: 75000 });
+    expect(screen.getByText('Rekening belum tersedia')).toBeTruthy();
+    expect(screen.queryByText('Buka WhatsApp')).toBeNull();
+  });
 });
 
 // The three digits that make a bank transfer identifiable. Rendered wrong, the
@@ -199,6 +223,22 @@ describe('PaymentPanel and the claim', () => {
     expect(screen.getByText('Menunggu konfirmasi penjual')).toBeTruthy();
     // Pressing it again does nothing the server would accept, so it is gone.
     expect(screen.queryByText('Saya sudah bayar')).toBeNull();
+  });
+
+  it('offers it on a WhatsApp order with chat wording, not bank wording', () => {
+    const onClaim = vi.fn();
+    render(
+      <PaymentPanel
+        order={order}
+        payment={{ kind: 'manual_whatsapp', method: 'MANUAL_WHATSAPP', amount: 75000, manual_whatsapp_phone: '628123' }}
+        onRefresh={() => {}}
+        onClaim={onClaim}
+      />,
+    );
+    expect(screen.getByText(/disepakati di WhatsApp/)).toBeTruthy();
+    expect(screen.queryByText(/transfer terkirim/)).toBeNull();
+    fireEvent.click(screen.getByText('Saya sudah bayar'));
+    expect(onClaim).toHaveBeenCalled();
   });
 
   it('never offers it on a gateway order, where nobody has to be told', () => {
