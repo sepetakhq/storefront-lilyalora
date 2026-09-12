@@ -293,7 +293,7 @@ function LookupResults({ orders }) {
             <span style={{ fontSize: 13, color: '#8A7D70' }}>{o.status_label}</span>
           </div>
           <div style={{ fontSize: 13, color: '#8A7D70', marginTop: 4 }}>
-            {fmtDateTime(o.placed_at)} · {o.lines.map((l) => `${l.name} ×${l.qty}`).join(', ')}
+            {fmtDateTime(o.placed_at)} · {o.lines.map((l) => `${l.name}${l.variant_label ? ` (${l.variant_label})` : ''} ×${l.qty}`).join(', ')}
           </div>
           <div style={{ marginTop: 8, fontWeight: 700 }}>{fmt(o.total)}</div>
           {o.awb ? (

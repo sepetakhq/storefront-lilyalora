@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Img, SIZES } from '../ui/Img.jsx';
 import { overlayLabel } from '../lib/availability.js';
 import { fmt } from '../shared/format.js';
+import { isPriceRange } from '../lib/variants.js';
 
 const VARIANTS = {
   // Home "paling disukai" grid and the catalog grid.
@@ -249,6 +250,11 @@ export default function ProductCard({ p, variant = 'grid', showSoldOut = false, 
           }}
         >
           <span style={{ fontWeight: 700, color: v.priceColor, fontSize: v.priceSize }}>
+            {/* The cheapest variant, said as such, when the variants differ
+                in price: a card must not read as quoting one price for all. */}
+            {isPriceRange(p) ? (
+              <span style={{ fontWeight: 600, color: '#B7AA9A', fontSize: '0.8em', marginRight: 4 }}>mulai</span>
+            ) : null}
             {fmt(p.price)}
           </span>
           {v.showOldPrice && p.on_sale && (

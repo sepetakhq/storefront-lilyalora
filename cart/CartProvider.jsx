@@ -1,9 +1,12 @@
 import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 
 import { readJson, writeJson } from '../lib/storage.js';
+import { lineKey, migrateCart } from '../lib/variants.js';
 
 const KEY = 'la3_cart';
-const VERSION = 2;
+// v3 adds `variantId` (null for a product sold as one thing). A v2 cart is
+// carried forward rather than dropped: see migrateCart.
+const VERSION = 3;
 const MAX_QTY = 99; // the server's per-line cap
 
 const CartContext = createContext(null);
@@ -20,11 +23,15 @@ const CartContext = createContext(null);
  * then contradict the draft, and the draft is the authoritative price.
  */
 function load() {
-  const stored = readJson(localStorage, KEY, null);
-  if (!stored || stored.v !== VERSION || !Array.isArray(stored.items)) return [];
-  return stored.items
+  const items = migrateCart(readJson(localStorage, KEY, null));
+  if (!items) return [];
+  return items
     .filter((it) => it && typeof it.productId === 'string' && typeof it.slug === 'string')
-    .map((it) => ({ ...it, qty: clampQty(it.qty) }));
+    .map((it) => ({
+      ...it,
+      qty: clampQty(it.qty),
+      variantId: typeof it.variantId === 'string' && it.variantId ? it.variantId : null,
+    }));
 }
 
 function persist(items) {
@@ -47,27 +54,28 @@ export function CartProvider({ children }) {
     return next;
   }, []);
 
+  // Lines are keyed by product and variant together (lineKey): two colours
+  // of one product are two lines, the same colour twice is one.
   const add = useCallback(
-    (product, qty = 1) => {
-      const existing = items.find((it) => it.productId === product.id);
+    (product, qty = 1, variantId = null) => {
+      const item = { productId: product.id, slug: product.slug, qty: clampQty(qty), variantId: variantId || null };
+      const key = lineKey(item);
+      const existing = items.find((it) => lineKey(it) === key);
       const next = existing
-        ? items.map((it) =>
-            it.productId === product.id ? { ...it, qty: clampQty(it.qty + qty) } : it,
-          )
-        : [...items, { productId: product.id, slug: product.slug, qty: clampQty(qty) }];
+        ? items.map((it) => (lineKey(it) === key ? { ...it, qty: clampQty(it.qty + qty) } : it))
+        : [...items, item];
       return commit(next);
     },
     [items, commit],
   );
 
   const setQty = useCallback(
-    (productId, qty) =>
-      commit(items.map((it) => (it.productId === productId ? { ...it, qty: clampQty(qty) } : it))),
+    (key, qty) => commit(items.map((it) => (lineKey(it) === key ? { ...it, qty: clampQty(qty) } : it))),
     [items, commit],
   );
 
   const remove = useCallback(
-    (productId) => commit(items.filter((it) => it.productId !== productId)),
+    (key) => commit(items.filter((it) => lineKey(it) !== key)),
     [items, commit],
   );
 

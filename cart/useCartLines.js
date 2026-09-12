@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 
 import { availableQty, cartLineStatus, leadDays } from '../lib/preorder.js';
 import { isBlocking } from '../lib/availability.js';
+import { lineKey, needsVariant, resolveVariant, variantLabel, withVariant } from '../lib/variants.js';
 import { useProductsBySlug } from '../hooks/queries.js';
 import { useCart } from './CartProvider.jsx';
 
@@ -23,20 +24,32 @@ export function useCartLines() {
       const q = results[i];
       const product = q?.data;
 
+      // A product sold in variants is judged as the variant the line names:
+      // withVariant overlays its price and stock, so every rung below reads
+      // the right number. Two rungs come first: an item that never chose a
+      // variant on a product that has them, and a variant that is gone.
+      const variant = resolveVariant(product, item.variantId);
+      const sellable = withVariant(product, variant);
+      let status;
+      if (product && needsVariant(item, product)) status = 'variant_required';
+      else if (product && item.variantId && !variant) status = 'gone';
       // Both stock rungs of this ladder are skipped for a made-to-order
       // product; see src/lib/preorder.js, where the rule is tested.
-      const status = cartLineStatus(item, product, q);
+      else status = cartLineStatus(item, sellable, q);
 
       return {
         item,
-        product: product ?? null,
+        key: lineKey(item),
+        product: sellable ?? null,
+        variant,
+        label: variantLabel(product, variant),
         status,
         error: q?.error ?? null,
         refetch: q?.refetch,
-        available: availableQty(product),
+        available: availableQty(sellable),
         preorder: Boolean(product?.preorder),
         leadDays: leadDays(product),
-        lineTotal: product ? product.price * item.qty : 0,
+        lineTotal: sellable ? sellable.price * item.qty : 0,
       };
     });
 

@@ -172,6 +172,9 @@ export default function OrderRoute() {
               </div>
               <div style={{ flex: 1, minWidth: 0, fontSize: 14 }}>
                 <div style={{ fontWeight: 600 }}>{l.name}</div>
+                {l.variant_label ? (
+                  <div style={{ color: '#43382E', fontSize: 13 }}>{l.variant_label}</div>
+                ) : null}
                 <div style={{ color: '#8A7D70', fontSize: 13 }}>
                   {fmt(l.unit_price)} × {l.qty}
                 </div>

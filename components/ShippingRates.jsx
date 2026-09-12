@@ -23,7 +23,7 @@ export default function ShippingRates({ destination, items, selected, onSelect, 
 
   // Keyed on the destination and the cart together. Both change the answer,
   // and serving a stale list would show a price the draft step then refuses.
-  const cartKey = items.map((i) => `${i.product_id}:${i.qty}`).sort().join('|');
+  const cartKey = items.map((i) => `${i.product_id}:${i.variant_id ?? ''}:${i.qty}`).sort().join('|');
 
   const rates = useQuery({
     queryKey: qk.rates(destination?.ref ?? '', cartKey),

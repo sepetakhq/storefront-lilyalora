@@ -79,7 +79,7 @@ export default function CartRoute() {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {lines.map((line) => (
-          <CartLine key={line.item.productId} line={line} onQty={cart.setQty} onRemove={cart.remove} />
+          <CartLine key={line.key} line={line} onQty={cart.setQty} onRemove={cart.remove} />
         ))}
       </div>
 
@@ -156,8 +156,8 @@ export default function CartRoute() {
 }
 
 function CartLine({ line, onQty, onRemove }) {
-  const { item, product, status, error, refetch, available, preorder } = line;
-  const remove = () => onRemove(item.productId);
+  const { item, key, product, label, status, error, refetch, available, preorder } = line;
+  const remove = () => onRemove(key);
 
   if (status === 'loading') {
     return (
@@ -181,16 +181,45 @@ function CartLine({ line, onQty, onRemove }) {
     );
   }
 
-  // A 404 means the product was unpublished or deleted. The only useful action
-  // left is removing it, so that is what the line offers.
+  // A 404 means the product was unpublished or deleted -- or the variant this
+  // line named no longer exists. The only useful action left is removing it,
+  // so that is what the line offers.
   if (status === 'gone') {
     return (
       <div style={{ ...card, background: '#FBF7F2' }}>
         <div style={{ flex: 1 }}>
           <div style={{ fontWeight: 700, fontSize: 15, color: '#8A7D70' }}>
-            Produk sudah tidak tersedia
+            {product ? 'Varian sudah tidak tersedia' : 'Produk sudah tidak tersedia'}
           </div>
-          <div style={{ fontSize: 13, color: '#B7AA9A', marginTop: 4 }}>{item.slug}</div>
+          <div style={{ fontSize: 13, color: '#B7AA9A', marginTop: 4 }}>{product?.name ?? item.slug}</div>
+        </div>
+        <button type="button" onClick={remove} style={removeButton}>
+          Hapus
+        </button>
+      </div>
+    );
+  }
+
+  // The product grew variants after this line was added, so it names none.
+  // The sale is still wanted; the line points at the page where the choice
+  // is made, and removing it is the way to replace it.
+  if (status === 'variant_required') {
+    return (
+      <div style={{ ...card, background: '#FBF7F2' }}>
+        <div style={{ width: 72, flexShrink: 0 }}>
+          <Img src={product.image} srcSet={product.image_srcset} sizes={SIZES.cartLine} alt={product.name} ratio="72/90" radius={12} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Link to={`/produk/${product.slug}`} style={{ fontWeight: 700, fontSize: 15, color: '#43382E' }}>
+            {product.name}
+          </Link>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#C08A2D', marginTop: 8 }}>
+            Produk ini sekarang punya varian.{' '}
+            <Link to={`/produk/${product.slug}`} style={{ color: '#B4557A', fontWeight: 700 }}>
+              Pilih varian
+            </Link>
+            , lalu hapus baris ini.
+          </div>
         </div>
         <button type="button" onClick={remove} style={removeButton}>
           Hapus
@@ -224,7 +253,9 @@ function CartLine({ line, onQty, onRemove }) {
         <Link to={`/produk/${product.slug}`} style={{ fontWeight: 700, fontSize: 15, color: '#43382E' }}>
           {product.name}
         </Link>
-        <div style={{ fontSize: 13, color: '#8A7D70', marginTop: 2 }}>{product.category_label}</div>
+        <div style={{ fontSize: 13, color: '#8A7D70', marginTop: 2 }}>
+          {label ? <span style={{ color: '#43382E', fontWeight: 600 }}>{label}</span> : product.category_label}
+        </div>
         <div style={{ fontWeight: 700, color: '#D26E8E', marginTop: 6 }}>{fmt(product.price)}</div>
 
         {status === 'soldout' ? (
@@ -243,7 +274,7 @@ function CartLine({ line, onQty, onRemove }) {
             Tersisa {available}.{' '}
             <button
               type="button"
-              onClick={() => onQty(item.productId, available)}
+              onClick={() => onQty(key, available)}
               style={{ color: '#B4557A', fontWeight: 700 }}
             >
               Sesuaikan
@@ -272,7 +303,7 @@ function CartLine({ line, onQty, onRemove }) {
               className="hv-cream"
               aria-label="Kurangi jumlah"
               disabled={item.qty <= 1}
-              onClick={() => onQty(item.productId, item.qty - 1)}
+              onClick={() => onQty(key, item.qty - 1)}
               style={qtyButton}
             >
               −
@@ -283,7 +314,7 @@ function CartLine({ line, onQty, onRemove }) {
               className="hv-cream"
               aria-label="Tambah jumlah"
               disabled={item.qty >= Math.min(MAX_QTY, available)}
-              onClick={() => onQty(item.productId, item.qty + 1)}
+              onClick={() => onQty(key, item.qty + 1)}
               style={qtyButton}
             >
               +

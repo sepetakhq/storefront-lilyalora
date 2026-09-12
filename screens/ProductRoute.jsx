@@ -8,6 +8,15 @@ import { useProduct } from '../hooks/queries.js';
 import { useCart } from '../cart/CartProvider.jsx';
 import { isSoldOut, leadDays, maxQty, stockNote } from '../lib/preorder.js';
 import { buyLabel, isImminent, isScheduled, msUntilOpen, windowNote } from '../lib/availability.js';
+import {
+  availableValues,
+  galleryFor,
+  initialSelection,
+  isPriceRange,
+  matchVariant,
+  select,
+  withVariant,
+} from '../lib/variants.js';
 import { useConfig } from '../config/ConfigProvider.jsx';
 import { useToast } from '../ui/ToastProvider.jsx';
 import { fmt, fmtClock, paragraphs } from '../shared/format.js';
@@ -92,6 +101,24 @@ function ProductView({ product, onOpen }) {
   const [qty, setQty] = useState(1);
   const [broken, setBroken] = useState(() => new Set());
 
+  // Which value is picked on each axis. Nothing is guessed beyond what
+  // initialSelection allows, so a hurried buyer cannot be sold the wrong
+  // colour by a default. `variant` is the one combination the picks name, or
+  // null while a pick is missing or names nothing.
+  const [selected, setSelected] = useState(() => initialSelection(product));
+  const variant = matchVariant(product.variants, selected);
+  // The product as judged for that variant -- its price, its stock -- so
+  // every helper below reads the right number. Unchanged without variants.
+  const sellable = withVariant(product, variant);
+  const needsChoice = Boolean(product.has_variants) && !variant;
+  const pick = (axis, value) => {
+    setSelected((cur) => select(product, cur, axis, value));
+    // A pick can change the photo and the stock ceiling, so the gallery and
+    // the quantity restart from the top.
+    setActive(0);
+    setQty(1);
+  };
+
   // The panel's three sections, resolved and then substituted, before anything
   // is gated on them.
   //
@@ -126,24 +153,27 @@ function ProductView({ product, onOpen }) {
   // left as a thumbnail that opens onto a blank frame. This is not theoretical:
   // a truncated upload is served as a 200 with content-type image/jpeg, and the
   // media worker marks the asset failed while the product still references it.
-  const images = all.filter((im) => !broken.has(im.url));
+  const images = galleryFor(all, variant).filter((im) => !broken.has(im.url));
   const gallery = images.length ? images : all.slice(0, 1);
   const main = gallery[Math.min(active, gallery.length - 1)];
 
-  const stock = stockNote(product);
+  // Stock is the variant's once one is picked; until then a variant product
+  // says nothing about stock -- the picker is where that answer lives.
+  const stock = needsChoice ? null : stockNote(sellable);
   const saleWindow = windowNote(product);
   // The server already accounts for pre-order in sold_out, and re-deriving it
   // from stock here is what used to refuse a made-to-order product.
   //
   // `blocked` is what the controls are gated on: sold out, closed, or not open
   // yet. `label` is the server's reason, rendered rather than guessed.
-  const label = buyLabel(product);
-  const blocked = isSoldOut(product) || Boolean(label);
-  const max = maxQty(product);
+  const label = buyLabel(sellable);
+  const blocked = isSoldOut(sellable) || Boolean(label);
+  const max = maxQty(sellable);
   const countdown = useOpeningCountdown(product, onOpen);
+  const disabled = blocked || needsChoice;
 
   const add = (then) => {
-    cart.add(product, qty);
+    cart.add(product, qty, variant?.id ?? null);
     showToast('Ditambahkan ke keranjang ✓');
     then?.();
   };
@@ -240,11 +270,20 @@ function ProductView({ product, onOpen }) {
             }}
           >
             <span style={{ fontSize: 26, fontWeight: 700, color: '#D26E8E' }}>
-              {fmt(product.price)}
+              {/* "mulai" until a variant is picked, when there is a range to
+                  speak of; the exact price the moment one is. */}
+              {needsChoice && isPriceRange(product) ? (
+                <>
+                  <span style={{ fontSize: 15, fontWeight: 600, color: '#B7AA9A', marginRight: 6 }}>mulai</span>
+                  {fmt(product.price)}
+                </>
+              ) : (
+                fmt(sellable.price)
+              )}
             </span>
-            {product.on_sale ? (
+            {sellable.on_sale ? (
               <>
-                <s style={{ color: '#B7AA9A', fontSize: 17 }}>{fmt(product.compare_at_price)}</s>
+                <s style={{ color: '#B7AA9A', fontSize: 17 }}>{fmt(sellable.compare_at_price)}</s>
                 <span
                   style={{
                     background: '#FDF0F4',
@@ -255,7 +294,7 @@ function ProductView({ product, onOpen }) {
                     padding: '4px 10px',
                   }}
                 >
-                  {product.badge}
+                  {sellable.badge}
                 </span>
               </>
             ) : null}
@@ -280,6 +319,11 @@ function ProductView({ product, onOpen }) {
           <p style={{ color: '#8A7D70', fontSize: 15.5, lineHeight: 1.7, margin: '0 0 20px' }}>
             {product.description}
           </p>
+
+          {product.has_variants ? (
+            <VariantPicker product={product} selected={selected} onPick={pick} />
+          ) : null}
+
           {saleWindow ? (
             <div style={{ fontSize: 13.5, fontWeight: 600, color: saleWindow.color, marginBottom: 6 }}>
               {saleWindow.text}
@@ -310,7 +354,7 @@ function ProductView({ product, onOpen }) {
                 type="button"
                 className="hv-cream"
                 onClick={() => setQty((q) => Math.max(1, q - 1))}
-                disabled={blocked || qty <= 1}
+                disabled={disabled || qty <= 1}
                 aria-label="Kurangi jumlah"
                 style={stepper}
               >
@@ -323,7 +367,7 @@ function ProductView({ product, onOpen }) {
                 type="button"
                 className="hv-cream"
                 onClick={() => setQty((q) => Math.min(max, q + 1))}
-                disabled={blocked || qty >= max}
+                disabled={disabled || qty >= max}
                 aria-label="Tambah jumlah"
                 style={stepper}
               >
@@ -334,21 +378,21 @@ function ProductView({ product, onOpen }) {
               type="button"
               className="hv-primary"
               onClick={() => add()}
-              disabled={blocked}
+              disabled={disabled}
               style={{
                 flex: 1,
                 minWidth: 200,
-                background: blocked ? '#E4DACB' : '#D26E8E',
-                color: blocked ? '#8A7D70' : '#fff',
+                background: disabled ? '#E4DACB' : '#D26E8E',
+                color: disabled ? '#8A7D70' : '#fff',
                 borderRadius: 999,
                 padding: '14px 26px',
                 fontWeight: 700,
                 fontSize: 15,
-                cursor: blocked ? 'not-allowed' : 'pointer',
-                boxShadow: blocked ? 'none' : '0 8px 20px rgba(210,110,142,0.3)',
+                cursor: disabled ? 'not-allowed' : 'pointer',
+                boxShadow: disabled ? 'none' : '0 8px 20px rgba(210,110,142,0.3)',
               }}
             >
-              {blocked ? (label ?? 'Stok habis') : 'Tambah ke Keranjang'}
+              {blocked ? (label ?? 'Stok habis') : needsChoice ? 'Pilih varian dulu' : 'Tambah ke Keranjang'}
             </button>
           </div>
 
@@ -356,7 +400,7 @@ function ProductView({ product, onOpen }) {
             type="button"
             className="hv-butter"
             onClick={() => add(() => navigate('/keranjang'))}
-            disabled={blocked}
+            disabled={disabled}
             style={{
               width: '100%',
               background: '#F5E6AE',
@@ -366,8 +410,8 @@ function ProductView({ product, onOpen }) {
               fontWeight: 700,
               fontSize: 15,
               marginBottom: 26,
-              opacity: blocked ? 0.5 : 1,
-              cursor: blocked ? 'not-allowed' : 'pointer',
+              opacity: disabled ? 0.5 : 1,
+              cursor: disabled ? 'not-allowed' : 'pointer',
             }}
           >
             Beli Sekarang
@@ -488,5 +532,59 @@ function ProductSkeleton() {
         </div>
       </div>
     </main>
+  );
+}
+
+/**
+ * One row of pills per axis. A pill the shop does not sell in combination
+ * with what is already picked is greyed out; one that is sold out is struck
+ * through as well, so the two reasons read differently. Both are disabled:
+ * the server would refuse either, and a buyer should not learn that at
+ * checkout.
+ */
+function VariantPicker({ product, selected, onPick }) {
+  return (
+    <div style={{ display: 'grid', gap: 16, marginBottom: 22 }}>
+      {product.options.map((axis) => {
+        const picked = selected[axis.name];
+        return (
+          <div key={axis.name} role="group" aria-label={`Pilih ${axis.name}`}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: '#43382E', marginBottom: 8 }}>
+              Pilih {axis.name}
+              {picked ? <span style={{ fontWeight: 500, color: '#8A7D70' }}>: {picked}</span> : null}
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {availableValues(product, axis.name, selected).map(({ value, exists, soldOut }) => {
+                const on = picked === value;
+                const off = !exists || soldOut;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => onPick(axis.name, value)}
+                    disabled={off}
+                    aria-pressed={on}
+                    aria-label={`${value}${soldOut ? ' (stok habis)' : !exists ? ' (tidak tersedia)' : ''}`}
+                    style={{
+                      borderRadius: 999,
+                      padding: '9px 16px',
+                      fontSize: 14,
+                      fontWeight: 600,
+                      border: `1.5px ${!exists ? 'dashed' : 'solid'} ${on ? '#D26E8E' : off ? '#EADFD0' : '#E4D6C0'}`,
+                      background: on ? '#FDF0F4' : '#fff',
+                      color: on ? '#B4557A' : off ? '#C4B8A8' : '#43382E',
+                      textDecoration: soldOut ? 'line-through' : 'none',
+                      cursor: off ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {value}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }

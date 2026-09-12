@@ -14,6 +14,7 @@ import { useCartLines } from '../cart/useCartLines.js';
 import { useConfig } from '../config/ConfigProvider.jsx';
 import { createDraft, sendCheckoutCode, verifyCheckoutCode } from '../api/endpoints.js';
 import { qk } from '../api/queryKeys.js';
+import { lineKey } from '../lib/variants.js';
 import { fmt } from '../shared/format.js';
 import { confirmStep, estimatePaymentFee, estimateShipping, methodFits } from '../lib/checkout.js';
 import {
@@ -101,12 +102,19 @@ function Checkout({ onPlaced }) {
   // Prices the cart last saw, for the change notice on the review panel.
   const cartPrices = useMemo(() => {
     const m = new Map();
-    for (const l of lines) if (l.product) m.set(l.product.id, l.product.price);
+    for (const l of lines) if (l.product) m.set(l.key, l.product.price);
     return m;
   }, [lines]);
 
+  // variant_id rides along only when the line names one, so a cart of plain
+  // products sends exactly the body it always did.
   const cartItems = useMemo(
-    () => cart.items.map((it) => ({ product_id: it.productId, qty: it.qty })),
+    () =>
+      cart.items.map((it) => ({
+        product_id: it.productId,
+        qty: it.qty,
+        ...(it.variantId ? { variant_id: it.variantId } : {}),
+      })),
     [cart.items],
   );
 
@@ -681,7 +689,7 @@ function Review({
   const liveCode = step === 'reopen';
   const skipsCode = step === 'place';
   const changed = draft.lines.filter((l) => {
-    const before = cartPrices.get(l.product_id);
+    const before = cartPrices.get(lineKey(l));
     return before !== undefined && before !== l.unit_price;
   });
 
@@ -717,7 +725,7 @@ function Review({
       <section style={card}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 18 }}>
           {draft.lines.map((l) => (
-            <div key={l.product_id} style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <div key={lineKey(l)} style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
               <div style={{ width: 44, flexShrink: 0 }}>
                 <Img
                   src={l.image}
@@ -730,6 +738,9 @@ function Review({
               </div>
               <div style={{ flex: 1, minWidth: 0, fontSize: 14 }}>
                 <div style={{ fontWeight: 600 }}>{l.name}</div>
+                {l.variant_label ? (
+                  <div style={{ color: '#43382E', fontSize: 13 }}>{l.variant_label}</div>
+                ) : null}
                 <div style={{ color: '#8A7D70', fontSize: 13 }}>
                   {fmt(l.unit_price)} × {l.qty}
                   {l.promotion_name ? (
