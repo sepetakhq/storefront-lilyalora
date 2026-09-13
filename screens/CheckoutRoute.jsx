@@ -16,7 +16,7 @@ import { createDraft, sendCheckoutCode, verifyCheckoutCode } from '../api/endpoi
 import { qk } from '../api/queryKeys.js';
 import { lineKey } from '../lib/variants.js';
 import { fmt } from '../shared/format.js';
-import { confirmStep, estimatePaymentFee, estimateShipping, methodFits } from '../lib/checkout.js';
+import { confirmStep, estimatePaymentFee, estimateShipping, methodFits, storeNotReady } from '../lib/checkout.js';
 import {
   CHANNEL_WHATSAPP,
   contactField,
@@ -377,6 +377,8 @@ function Checkout({ onPlaced }) {
   // before the fee itself. Advisory, like everything on this side of the
   // draft, and it is what the tiles are measured against.
   const estBase = subtotal + estShipping;
+  const notReady = storeNotReady({ couriers, paymentMethods, liveShipping });
+  const blocked = notReady.shipping || notReady.payment;
   const estFee = estimatePaymentFee(estBase, paymentMethods.find((p) => p.code === method));
 
   return (
@@ -497,6 +499,10 @@ function Checkout({ onPlaced }) {
                   setQuote(null);
                 }}
               />
+            ) : notReady.shipping ? (
+              <div style={notReadyBox}>
+                Toko ini belum mengatur pengiriman. Hubungi penjual sebelum memesan.
+              </div>
             ) : (
               <div style={{ display: 'grid', gap: 10 }}>
                 {couriers.map((c) => (
@@ -516,6 +522,11 @@ function Checkout({ onPlaced }) {
 
           <section style={card}>
             <div style={cardTitle}>3 · Pembayaran</div>
+            {notReady.payment ? (
+              <div style={notReadyBox}>
+                Toko ini belum mengatur metode pembayaran. Hubungi penjual sebelum memesan.
+              </div>
+            ) : null}
             <div style={{ display: 'grid', gap: 10 }}>
               {paymentMethods.map((p) => {
                 const fits = methodFits(p, estBase);
@@ -608,7 +619,7 @@ function Checkout({ onPlaced }) {
           <SummaryRow
             label="Ongkir"
             value={
-              liveShipping && !quote
+              (liveShipping ? !quote : !courier)
                 ? 'Belum dipilih'
                 : estShipping === 0
                   ? 'Gratis'
@@ -638,11 +649,11 @@ function Checkout({ onPlaced }) {
           <button
             type="submit"
             className="hv-primary"
-            disabled={draftMutation.isPending || isLoading || hasBlockers}
+            disabled={draftMutation.isPending || isLoading || hasBlockers || blocked}
             style={{
               ...primaryButton,
               marginTop: 16,
-              opacity: draftMutation.isPending || isLoading || hasBlockers ? 0.6 : 1,
+              opacity: draftMutation.isPending || isLoading || hasBlockers || blocked ? 0.6 : 1,
             }}
           >
             {draftMutation.isPending ? 'Menghitung…' : 'Buat pesanan'}
@@ -1006,6 +1017,10 @@ const primaryButton = {
   fontWeight: 700,
   fontSize: 15,
 };
+
+// The merchant's gap, not the buyer's mistake: said inside the section it
+// concerns, in the section's own muted tone rather than the error red.
+const notReadyBox = { color: '#8A7D70', fontSize: 13.5, lineHeight: 1.6 };
 
 const errorBox = {
   background: '#FDF0F4',
