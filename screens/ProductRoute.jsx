@@ -92,7 +92,7 @@ function useOpeningCountdown(product, onOpen) {
 }
 
 function ProductView({ product, onOpen }) {
-  const { brand, freeShipping, freeShippingMinLabel, copy } = useConfig();
+  const { brand, freeShipping, freeShippingMinLabel, copy, sections } = useConfig();
   const cart = useCart();
   const showToast = useToast();
   const navigate = useNavigate();
@@ -424,7 +424,7 @@ function ProductView({ product, onOpen }) {
             <div style={{ borderTop: '1px solid #F0E4CF' }}>
               {spec.length > 0 ? (
                 <details style={detailsRow}>
-                  <summary style={summary}>Detail bahan &amp; ukuran</summary>
+                  <summary style={summary}>{sections.product_details_heading || 'Detail bahan & ukuran'}</summary>
                   {spec.map((t, i) => (
                     <p key={i} style={detailsText}>
                       {t}
@@ -436,7 +436,7 @@ function ProductView({ product, onOpen }) {
                   never written care copy got a panel opening onto nothing. */}
               {care.length > 0 ? (
                 <details style={detailsRow}>
-                  <summary style={summary}>Cara perawatan</summary>
+                  <summary style={summary}>{sections.product_care_heading || 'Cara perawatan'}</summary>
                   {care.map((t, i) => (
                     <p key={i} style={detailsText}>
                       {t}
@@ -449,7 +449,7 @@ function ProductView({ product, onOpen }) {
                   that opens onto nothing is worse than no panel. */}
               {(brand.productShippingCopy || freeShipping || product.preorder) && (
                 <details style={{ padding: '14px 4px' }}>
-                  <summary style={summary}>Pengiriman</summary>
+                  <summary style={summary}>{sections.product_shipping_heading || 'Pengiriman'}</summary>
                   {/* First, because it changes what every line below it means:
                       the courier only starts counting once the item exists. */}
                   {product.preorder && (

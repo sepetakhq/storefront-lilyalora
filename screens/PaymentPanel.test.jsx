@@ -53,6 +53,8 @@ describe('PaymentPanel renders every kind the backend can emit', () => {
     panel({ kind: 'va', method: 'BCA', amount: 75000, va_bank: 'BCA', va_number: '31086616057511859904943' });
 
     expect(screen.getByText(/31086616057511859904943/)).toBeTruthy();
+    // The holder the merchant typed in settings, beside the number.
+    expect(screen.getByText('LILY ALORA')).toBeTruthy();
     expect(screen.queryByText(DEAD_END)).toBeNull();
   });
 
@@ -60,6 +62,9 @@ describe('PaymentPanel renders every kind the backend can emit', () => {
     panel({ kind: 'qr', method: 'QRIS', amount: 75000, qr_payload: emvco });
 
     expect(screen.queryByText(DEAD_END)).toBeNull();
+    // Merchant name and NMID under the code, from the tenant's settings.
+    expect(screen.getByText('LILY ALORA')).toBeTruthy();
+    expect(screen.getByText(/NMID ID10261234567/)).toBeTruthy();
   });
 
   it('qr_image: shows the image the provider drew', () => {

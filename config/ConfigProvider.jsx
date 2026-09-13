@@ -2,6 +2,7 @@ import { createContext, useContext, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import { getConfig } from '../api/endpoints.js';
+import { ROUTE_PATHS } from '../shared/navRoutes.js';
 import { qk } from '../api/queryKeys.js';
 import { fmt, shippingCopy } from '../shared/format.js';
 
@@ -33,13 +34,8 @@ export function useConfig() {
   return ctx;
 }
 
-// The API's nav entries name the prototype's screens, not URLs.
-const ROUTE_PATHS = {
-  home: '/',
-  catalog: '/katalog',
-  track: '/lacak',
-  about: '/tentang',
-};
+// The API's nav entries name screens, not URLs; the map is shared with the
+// backoffice so the two cannot disagree about which keys exist.
 
 // Exported for its test. Every null guard here stands for a payload an older
 // API can still send, and those are cheaper to pin as a pure function than by

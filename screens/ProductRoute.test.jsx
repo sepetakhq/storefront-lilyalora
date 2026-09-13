@@ -12,9 +12,13 @@ let product = {};
 let freeShipping = true;
 const brand = { productShippingCopy: '' };
 
+// Section headings the merchant may rename; empty means the storefront's own.
+const sections = {};
+
 vi.mock('../config/ConfigProvider.jsx', () => ({
   useConfig: () => ({
     brand,
+    sections,
     freeShipping,
     freeShippingMinLabel: fmt(150000),
     // The real provider's helper, wired the same way, so these tests exercise
@@ -72,6 +76,7 @@ describe('ProductRoute detail panel', () => {
   afterEach(() => {
     freeShipping = true;
     brand.productShippingCopy = '';
+    for (const k of Object.keys(sections)) delete sections[k];
   });
 
   it('renders every section when each one has something to say', () => {
@@ -82,6 +87,22 @@ describe('ProductRoute detail panel', () => {
     expect(screen.getByText('Detail bahan & ukuran')).toBeTruthy();
     expect(screen.getByText('Cara perawatan')).toBeTruthy();
     expect(screen.getByText('Pengiriman')).toBeTruthy();
+  });
+
+  // The headings sit over merchant-written bodies, so they are the
+  // merchant's too; a shop that sells food, not scarves, renames them.
+  it('lets the shop rename the panel headings from its section copy', () => {
+    brand.productShippingCopy = 'Dikirim dari Bandung.';
+    sections.product_details_heading = 'Komposisi';
+    sections.product_care_heading = 'Cara penyimpanan';
+    sections.product_shipping_heading = 'Pengiriman & pengemasan';
+    withProduct({ material_spec: 'Gula aren 250 g', care_copy: 'Simpan di tempat kering.' });
+    panel();
+
+    expect(screen.getByText('Komposisi')).toBeTruthy();
+    expect(screen.getByText('Cara penyimpanan')).toBeTruthy();
+    expect(screen.getByText('Pengiriman & pengemasan')).toBeTruthy();
+    expect(screen.queryByText('Detail bahan & ukuran')).toBeNull();
   });
 
   // The whole point of the change: the server resolved the chain, so the page
