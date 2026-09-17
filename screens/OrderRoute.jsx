@@ -6,12 +6,12 @@ import { Img, SIZES } from '../ui/Img.jsx';
 import QrImage from '../ui/QrImage.jsx';
 import { CountdownClock } from '../ui/Countdown.jsx';
 import { EmptyState, ErrorState, Skeleton } from '../ui/states.jsx';
-import { useOrder } from '../hooks/queries.js';
-import { useConfig } from '../config/ConfigProvider.jsx';
-import { serverNow } from '../api/client.js';
-import { fmt, fmtDate, fmtDateTime } from '../shared/format.js';
-import { claimPayment, reopenPayment } from '../api/endpoints.js';
-import { qk } from '../api/queryKeys.js';
+import { useOrder } from '@sepetakhq/storefront-kit/hooks/queries';
+import { useConfig } from '@sepetakhq/storefront-kit/config/ConfigProvider';
+import { serverNow } from '@sepetakhq/storefront-kit/api/client';
+import { fmt, fmtDate, fmtDateTime } from '@sepetakhq/storefront-kit/shared/format';
+import { claimPayment, reopenPayment } from '@sepetakhq/storefront-kit/api/endpoints';
+import { qk } from '@sepetakhq/storefront-kit/api/queryKeys';
 import {
   PAY_DEAD,
   canClaimPayment,
@@ -22,9 +22,9 @@ import {
   isUsableRedirect,
   paymentState,
   splitUniqueCode,
-} from '../lib/payment.js';
-import { useToast } from '../ui/ToastProvider.jsx';
-import { orderMessage, waLink } from '../lib/whatsapp.js';
+} from '@sepetakhq/storefront-kit/lib/payment';
+import { useToast } from '@sepetakhq/storefront-kit/ui/ToastProvider';
+import { orderMessage, waLink } from '@sepetakhq/storefront-kit/lib/whatsapp';
 
 // QrCode is lazy because it pulls in an encoder; QrImage is not, because it
 // has nothing to pull in and deferring it would only delay the image request.

@@ -1,14 +1,14 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
-import { resolveDestination, searchDestinations } from '../api/endpoints.js';
-import { qk } from '../api/queryKeys.js';
+import { resolveDestination, searchDestinations } from '@sepetakhq/storefront-kit/api/endpoints';
+import { qk } from '@sepetakhq/storefront-kit/api/queryKeys';
 import {
   destinationLines,
   isUnserved,
   matchRange,
   unservedAlternatives,
-} from '../lib/shipping.js';
+} from '@sepetakhq/storefront-kit/lib/shipping';
 
 // Where the parcel is going.
 //

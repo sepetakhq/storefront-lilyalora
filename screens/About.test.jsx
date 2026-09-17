@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 afterEach(cleanup);
 
 const config = { brand: {} };
-vi.mock('../config/ConfigProvider.jsx', () => ({
+vi.mock('@sepetakhq/storefront-kit/config/ConfigProvider', () => ({
   useConfig: () => config,
 }));
 

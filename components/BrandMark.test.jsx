@@ -6,7 +6,7 @@ afterEach(cleanup);
 // The mark reads its shop out of the config context, and building a real one
 // means a query client and a live endpoint. The hook is the seam.
 const config = { brand: {} };
-vi.mock('../config/ConfigProvider.jsx', () => ({
+vi.mock('@sepetakhq/storefront-kit/config/ConfigProvider', () => ({
   useConfig: () => config,
 }));
 

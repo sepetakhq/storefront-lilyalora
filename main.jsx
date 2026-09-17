@@ -3,9 +3,9 @@ import { createRoot } from 'react-dom/client';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider } from 'react-router-dom';
 
-import { createQueryClient } from './api/queryClient.js';
+import { createQueryClient } from '@sepetakhq/storefront-kit/api/queryClient';
 import { router } from './routes.jsx';
-import { purgeLegacyKeys } from './lib/storage.js';
+import { purgeLegacyKeys } from '@sepetakhq/storefront-kit/lib/storage';
 import './styles.css';
 
 // The prototype's localStorage describes a catalogue that no longer exists —

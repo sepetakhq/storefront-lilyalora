@@ -1,6 +1,6 @@
 import { Img, SIZES } from '../ui/Img.jsx';
-import { useConfig } from '../config/ConfigProvider.jsx';
-import { paragraphs } from '../shared/format.js';
+import { useConfig } from '@sepetakhq/storefront-kit/config/ConfigProvider';
+import { paragraphs } from '@sepetakhq/storefront-kit/shared/format';
 
 export default function About() {
   const { brand } = useConfig();

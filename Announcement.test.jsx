@@ -2,7 +2,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { fmt, shippingCopy } from './shared/format.js';
+import { fmt, shippingCopy } from '@sepetakhq/storefront-kit/shared/format';
 
 afterEach(cleanup);
 
@@ -11,12 +11,12 @@ afterEach(cleanup);
 let home = { data: undefined };
 let freeShipping = true;
 
-vi.mock('./hooks/queries.js', () => ({
+vi.mock('@sepetakhq/storefront-kit/hooks/queries', () => ({
   useHome: () => home,
   useProduct: () => ({ data: undefined }),
 }));
 
-vi.mock('./config/ConfigProvider.jsx', () => ({
+vi.mock('@sepetakhq/storefront-kit/config/ConfigProvider', () => ({
   useConfig: () => ({
     brand: {},
     tenant: {},

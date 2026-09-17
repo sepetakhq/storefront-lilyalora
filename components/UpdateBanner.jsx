@@ -1,6 +1,6 @@
 import { useLocation } from 'react-router-dom';
 
-import { useBuildUpdate } from '../shared/useBuildUpdate.js';
+import { useBuildUpdate } from '@sepetakhq/storefront-kit/shared/useBuildUpdate';
 
 // The two places a buyer is mid-transaction. A reload is safe on both — the
 // cart is written through to localStorage and the checkout draft to

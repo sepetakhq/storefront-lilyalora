@@ -1,7 +1,7 @@
 import { Link, NavLink } from 'react-router-dom';
 
-import { useConfig } from '../config/ConfigProvider.jsx';
-import { useCart } from '../cart/CartProvider.jsx';
+import { useConfig } from '@sepetakhq/storefront-kit/config/ConfigProvider';
+import { useCart } from '@sepetakhq/storefront-kit/cart/CartProvider';
 import { BrandMark } from './BrandMark.jsx';
 
 const bar = { width: 16, height: 2, background: '#43382E', borderRadius: 2 };

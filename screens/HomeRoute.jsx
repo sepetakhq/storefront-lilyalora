@@ -5,10 +5,10 @@ import ProductCard from '../components/ProductCard.jsx';
 import { Img, SIZES } from '../ui/Img.jsx';
 import { CountdownCells } from '../ui/Countdown.jsx';
 import { ErrorState, ProductGridSkeleton, Skeleton } from '../ui/states.jsx';
-import { useHome } from '../hooks/queries.js';
-import { qk } from '../api/queryKeys.js';
-import { useConfig } from '../config/ConfigProvider.jsx';
-import { fmt } from '../shared/format.js';
+import { useHome } from '@sepetakhq/storefront-kit/hooks/queries';
+import { qk } from '@sepetakhq/storefront-kit/api/queryKeys';
+import { useConfig } from '@sepetakhq/storefront-kit/config/ConfigProvider';
+import { fmt } from '@sepetakhq/storefront-kit/shared/format';
 
 const wrap = { maxWidth: 1200, margin: '0 auto' };
 const h2 = { fontFamily: "'Cormorant Garamond',serif", fontSize: 34, fontWeight: 600, margin: 0 };

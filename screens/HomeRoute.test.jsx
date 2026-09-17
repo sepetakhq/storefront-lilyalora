@@ -9,12 +9,12 @@ afterEach(cleanup);
 // the whole point: how many pictures a shop uploaded is what decides it, and
 // that is not something a rendered provider makes easy to vary.
 const config = { brand: {} };
-vi.mock('../config/ConfigProvider.jsx', () => ({
+vi.mock('@sepetakhq/storefront-kit/config/ConfigProvider', () => ({
   useConfig: () => config,
 }));
 
 const home = { data: { sections: [] }, isPending: false, isError: false };
-vi.mock('../hooks/queries.js', () => ({
+vi.mock('@sepetakhq/storefront-kit/hooks/queries', () => ({
   useHome: () => home,
 }));
 

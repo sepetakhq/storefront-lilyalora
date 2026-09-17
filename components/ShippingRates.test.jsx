@@ -10,7 +10,7 @@ afterEach(cleanup);
 // wrong. Imported through the module under test so the export stays honest.
 const { RateProblem, RateTile } = await import('./ShippingRates.jsx');
 
-import { ApiError } from '../api/client.js';
+import { ApiError } from '@sepetakhq/storefront-kit/api/client';
 
 const option = (extra) => ({
   quote_id: 'q1',

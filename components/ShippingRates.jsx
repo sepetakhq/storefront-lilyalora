@@ -1,11 +1,11 @@
 import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
-import { getShippingRates } from '../api/endpoints.js';
-import { qk } from '../api/queryKeys.js';
-import { useConfig } from '../config/ConfigProvider.jsx';
-import { fmt } from '../shared/format.js';
-import { defaultOption, destinationLines, isStillOffered, splitEtd, weightInKg } from '../lib/shipping.js';
+import { getShippingRates } from '@sepetakhq/storefront-kit/api/endpoints';
+import { qk } from '@sepetakhq/storefront-kit/api/queryKeys';
+import { useConfig } from '@sepetakhq/storefront-kit/config/ConfigProvider';
+import { fmt } from '@sepetakhq/storefront-kit/shared/format';
+import { defaultOption, destinationLines, isStillOffered, splitEtd, weightInKg } from '@sepetakhq/storefront-kit/lib/shipping';
 
 // The live rate list.
 //

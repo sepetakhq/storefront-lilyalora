@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 
-import { useConfig } from '../config/ConfigProvider.jsx';
+import { useConfig } from '@sepetakhq/storefront-kit/config/ConfigProvider';
 import { BrandMark } from './BrandMark.jsx';
 
 const colTitle = {

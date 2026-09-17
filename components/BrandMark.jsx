@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { useConfig } from '../config/ConfigProvider.jsx';
+import { useConfig } from '@sepetakhq/storefront-kit/config/ConfigProvider';
 
 /**
  * The shop's name at the top of the page: its uploaded logo, or its wordmark.

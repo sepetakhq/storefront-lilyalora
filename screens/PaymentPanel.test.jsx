@@ -9,7 +9,7 @@ afterEach(cleanup);
 // The panel reads brand copy and QRIS merchant details from the tenant config.
 // Mocked rather than wrapped in a real ConfigProvider, which would need a
 // network request and a QueryClient to answer a question about rendering.
-vi.mock('../config/ConfigProvider.jsx', () => ({
+vi.mock('@sepetakhq/storefront-kit/config/ConfigProvider', () => ({
   useConfig: () => ({
     brand: { whatsapp_url: 'https://wa.me/6285641232507' },
     payment: { qris_merchant_name: 'LILY ALORA', qris_nmid: 'ID10261234567', account_holder: 'LILY ALORA' },

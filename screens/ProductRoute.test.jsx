@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { fmt, shippingCopy } from '../shared/format.js';
+import { fmt, shippingCopy } from '@sepetakhq/storefront-kit/shared/format';
 
 afterEach(cleanup);
 
@@ -10,15 +10,15 @@ afterEach(cleanup);
 // test could parameterise.
 let product = {};
 let freeShipping = true;
-const brand = { productShippingCopy: '' };
-
 // Section headings the merchant may rename; empty means the storefront's own.
+// On `brand`, exactly where ConfigProvider.shape puts section_copy: mocking
+// them at the top level is how a crash on every product page passed here.
 const sections = {};
+const brand = { productShippingCopy: '', sections };
 
-vi.mock('../config/ConfigProvider.jsx', () => ({
+vi.mock('@sepetakhq/storefront-kit/config/ConfigProvider', () => ({
   useConfig: () => ({
     brand,
-    sections,
     freeShipping,
     freeShippingMinLabel: fmt(150000),
     // The real provider's helper, wired the same way, so these tests exercise
@@ -27,17 +27,17 @@ vi.mock('../config/ConfigProvider.jsx', () => ({
   }),
 }));
 
-vi.mock('../hooks/queries.js', () => ({
+vi.mock('@sepetakhq/storefront-kit/hooks/queries', () => ({
   useProduct: () => ({ data: product, isPending: false, isError: false, refetch: () => {} }),
 }));
 
 const cartCalls = [];
-vi.mock('../cart/CartProvider.jsx', () => ({
+vi.mock('@sepetakhq/storefront-kit/cart/CartProvider', () => ({
   useCart: () => ({ add: (...args) => cartCalls.push(args), lines: [] }),
   MAX_QTY: 99,
 }));
 
-vi.mock('../ui/ToastProvider.jsx', () => ({
+vi.mock('@sepetakhq/storefront-kit/ui/ToastProvider', () => ({
   useToast: () => () => {},
 }));
 

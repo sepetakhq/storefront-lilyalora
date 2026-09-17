@@ -4,10 +4,10 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import ProductCard from '../components/ProductCard.jsx';
 import { Img, SIZES } from '../ui/Img.jsx';
 import { EmptyState, ErrorState, Skeleton } from '../ui/states.jsx';
-import { useProduct } from '../hooks/queries.js';
-import { useCart } from '../cart/CartProvider.jsx';
-import { isSoldOut, leadDays, maxQty, stockNote } from '../lib/preorder.js';
-import { buyLabel, isImminent, isScheduled, msUntilOpen, windowNote } from '../lib/availability.js';
+import { useProduct } from '@sepetakhq/storefront-kit/hooks/queries';
+import { useCart } from '@sepetakhq/storefront-kit/cart/CartProvider';
+import { isSoldOut, leadDays, maxQty, stockNote } from '@sepetakhq/storefront-kit/lib/preorder';
+import { buyLabel, isImminent, isScheduled, msUntilOpen, windowNote } from '@sepetakhq/storefront-kit/lib/availability';
 import {
   availableValues,
   galleryFor,
@@ -16,10 +16,10 @@ import {
   matchVariant,
   select,
   withVariant,
-} from '../lib/variants.js';
-import { useConfig } from '../config/ConfigProvider.jsx';
-import { useToast } from '../ui/ToastProvider.jsx';
-import { fmt, fmtClock, paragraphs } from '../shared/format.js';
+} from '@sepetakhq/storefront-kit/lib/variants';
+import { useConfig } from '@sepetakhq/storefront-kit/config/ConfigProvider';
+import { useToast } from '@sepetakhq/storefront-kit/ui/ToastProvider';
+import { fmt, fmtClock, paragraphs } from '@sepetakhq/storefront-kit/shared/format';
 
 const detailsRow = { borderBottom: '1px solid #F0E4CF', padding: '14px 4px' };
 const summary = { fontWeight: 700, cursor: 'pointer', fontSize: 14.5 };
@@ -92,7 +92,10 @@ function useOpeningCountdown(product, onOpen) {
 }
 
 function ProductView({ product, onOpen }) {
-  const { brand, freeShipping, freeShippingMinLabel, copy, sections } = useConfig();
+  const { brand, freeShipping, freeShippingMinLabel, copy } = useConfig();
+  // The headings live on brand, where the provider shapes section_copy.
+  // Reading them off the top level rendered a crash for every product page.
+  const sections = brand.sections ?? {};
   const cart = useCart();
   const showToast = useToast();
   const navigate = useNavigate();

@@ -2,13 +2,13 @@ import { Link } from 'react-router-dom';
 
 import { Img, SIZES } from '../ui/Img.jsx';
 import { EmptyState, InlineError, Skeleton } from '../ui/states.jsx';
-import { useCart, MAX_QTY } from '../cart/CartProvider.jsx';
-import { useCartLines } from '../cart/useCartLines.js';
-import { useConfig } from '../config/ConfigProvider.jsx';
-import { orderNote, shortNote } from '../lib/preorder.js';
-import { blockerNotice, windowNote } from '../lib/availability.js';
-import { didPurgeLegacy } from '../lib/storage.js';
-import { fmt } from '../shared/format.js';
+import { useCart, MAX_QTY } from '@sepetakhq/storefront-kit/cart/CartProvider';
+import { useCartLines } from '@sepetakhq/storefront-kit/cart/useCartLines';
+import { useConfig } from '@sepetakhq/storefront-kit/config/ConfigProvider';
+import { orderNote, shortNote } from '@sepetakhq/storefront-kit/lib/preorder';
+import { blockerNotice, windowNote } from '@sepetakhq/storefront-kit/lib/availability';
+import { didPurgeLegacy } from '@sepetakhq/storefront-kit/lib/storage';
+import { fmt } from '@sepetakhq/storefront-kit/shared/format';
 
 export default function CartRoute() {
   const { freeShipping, freeShippingMin } = useConfig();

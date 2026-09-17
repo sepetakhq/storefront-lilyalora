@@ -1,8 +1,8 @@
 import { act, cleanup, render, renderHook, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { useCountdown } from './useCountdown.js';
-import { CountdownCells } from '../ui/Countdown.jsx';
+import { useCountdown } from '@sepetakhq/storefront-kit/hooks/useCountdown';
+import { CountdownCells } from './Countdown.jsx';
 
 // Testing Library only registers its own cleanup when vitest runs with
 // globals, which this project does not.

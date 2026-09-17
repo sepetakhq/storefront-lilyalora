@@ -1,6 +1,6 @@
-import { useCountdown } from '../hooks/useCountdown.js';
-import { fmtClock } from '../shared/format.js';
-import { serverNow } from '../api/client.js';
+import { useCountdown } from '@sepetakhq/storefront-kit/hooks/useCountdown';
+import { fmtClock } from '@sepetakhq/storefront-kit/shared/format';
+import { serverNow } from '@sepetakhq/storefront-kit/api/client';
 
 const HOUR = 60 * 60 * 1000;
 

@@ -6,17 +6,17 @@ import { Img, SIZES } from '../ui/Img.jsx';
 import OtpModal from '../components/OtpModal.jsx';
 import DestinationPicker from '../components/DestinationPicker.jsx';
 import ShippingRates from '../components/ShippingRates.jsx';
-import { orderNote } from '../lib/preorder.js';
-import { MAX_VOUCHER_LEN, normalizeVoucherInput, voucherLabel, voucherNotes } from '../lib/voucher.js';
-import { destinationSummary } from '../lib/shipping.js';
-import { useCart } from '../cart/CartProvider.jsx';
-import { useCartLines } from '../cart/useCartLines.js';
-import { useConfig } from '../config/ConfigProvider.jsx';
-import { createDraft, sendCheckoutCode, verifyCheckoutCode } from '../api/endpoints.js';
-import { qk } from '../api/queryKeys.js';
-import { lineKey } from '../lib/variants.js';
-import { fmt } from '../shared/format.js';
-import { confirmStep, estimatePaymentFee, estimateShipping, methodFits, storeNotReady } from '../lib/checkout.js';
+import { orderNote } from '@sepetakhq/storefront-kit/lib/preorder';
+import { MAX_VOUCHER_LEN, normalizeVoucherInput, voucherLabel, voucherNotes } from '@sepetakhq/storefront-kit/lib/voucher';
+import { destinationSummary } from '@sepetakhq/storefront-kit/lib/shipping';
+import { useCart } from '@sepetakhq/storefront-kit/cart/CartProvider';
+import { useCartLines } from '@sepetakhq/storefront-kit/cart/useCartLines';
+import { useConfig } from '@sepetakhq/storefront-kit/config/ConfigProvider';
+import { createDraft, sendCheckoutCode, verifyCheckoutCode } from '@sepetakhq/storefront-kit/api/endpoints';
+import { qk } from '@sepetakhq/storefront-kit/api/queryKeys';
+import { lineKey } from '@sepetakhq/storefront-kit/lib/variants';
+import { fmt } from '@sepetakhq/storefront-kit/shared/format';
+import { confirmStep, estimatePaymentFee, estimateShipping, methodFits, storeNotReady } from '@sepetakhq/storefront-kit/lib/checkout';
 import {
   CHANNEL_WHATSAPP,
   contactField,
@@ -24,10 +24,10 @@ import {
   normalizePhone,
   validateContact,
   validatePhone,
-} from '../lib/contact.js';
-import { clearCheckout, keyForAttempt, resetKeyForAttempt, saveCheckout } from '../checkout/checkoutStorage.js';
-import { recordRetryAfter, recordSend, clearCooldown } from '../checkout/otpCooldown.js';
-import { rememberOrder } from '../checkout/orderTokens.js';
+} from '@sepetakhq/storefront-kit/lib/contact';
+import { clearCheckout, keyForAttempt, resetKeyForAttempt, saveCheckout } from '@sepetakhq/storefront-kit/checkout/checkoutStorage';
+import { recordRetryAfter, recordSend, clearCooldown } from '@sepetakhq/storefront-kit/checkout/otpCooldown';
+import { rememberOrder } from '@sepetakhq/storefront-kit/checkout/orderTokens';
 import { CountdownClock } from '../ui/Countdown.jsx';
 
 const card = { background: '#fff', border: '1px solid #F0E4CF', borderRadius: 22, padding: 22 };

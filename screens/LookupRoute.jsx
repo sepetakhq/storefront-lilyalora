@@ -2,15 +2,15 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 
-import { sendLookupCode, verifyLookupCode } from '../api/endpoints.js';
-import { useConfig } from '../config/ConfigProvider.jsx';
-import { contactField, normalizeContact, validateContact } from '../lib/contact.js';
-import { extractToken, forgetOrder, listOrders } from '../checkout/orderTokens.js';
-import { deviceRows, tokensOf } from '../lib/deviceOrders.js';
-import { useOrdersByToken } from '../hooks/queries.js';
-import { recordRetryAfter, recordSend, cooldown } from '../checkout/otpCooldown.js';
+import { sendLookupCode, verifyLookupCode } from '@sepetakhq/storefront-kit/api/endpoints';
+import { useConfig } from '@sepetakhq/storefront-kit/config/ConfigProvider';
+import { contactField, normalizeContact, validateContact } from '@sepetakhq/storefront-kit/lib/contact';
+import { extractToken, forgetOrder, listOrders } from '@sepetakhq/storefront-kit/checkout/orderTokens';
+import { deviceRows, tokensOf } from '@sepetakhq/storefront-kit/lib/deviceOrders';
+import { useOrdersByToken } from '@sepetakhq/storefront-kit/hooks/queries';
+import { recordRetryAfter, recordSend, cooldown } from '@sepetakhq/storefront-kit/checkout/otpCooldown';
 import { CountdownWords } from '../ui/Countdown.jsx';
-import { fmt, fmtDateTime } from '../shared/format.js';
+import { fmt, fmtDateTime } from '@sepetakhq/storefront-kit/shared/format';
 
 const card = { background: '#fff', border: '1px solid #F0E4CF', borderRadius: 22, padding: 22 };
 const field = {

@@ -1,9 +1,9 @@
 import { Link } from 'react-router-dom';
 
 import { Img, SIZES } from '../ui/Img.jsx';
-import { overlayLabel } from '../lib/availability.js';
-import { fmt } from '../shared/format.js';
-import { isPriceRange } from '../lib/variants.js';
+import { overlayLabel } from '@sepetakhq/storefront-kit/lib/availability';
+import { fmt } from '@sepetakhq/storefront-kit/shared/format';
+import { isPriceRange } from '@sepetakhq/storefront-kit/lib/variants';
 
 const VARIANTS = {
   // Home "paling disukai" grid and the catalog grid.

@@ -2,7 +2,7 @@ import { useSearchParams } from 'react-router-dom';
 
 import ProductCard from '../components/ProductCard.jsx';
 import { EmptyState, ErrorState, InlineError, ProductGridSkeleton } from '../ui/states.jsx';
-import { useCategories, useProducts } from '../hooks/queries.js';
+import { useCategories, useProducts } from '@sepetakhq/storefront-kit/hooks/queries';
 
 const ALL = 'Semua';
 

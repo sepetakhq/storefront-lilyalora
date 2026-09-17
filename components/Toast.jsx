@@ -1,4 +1,4 @@
-import { useToastMessage } from '../ui/ToastProvider.jsx';
+import { useToastMessage } from '@sepetakhq/storefront-kit/ui/ToastProvider';
 
 export default function Toast() {
   const message = useToastMessage();
