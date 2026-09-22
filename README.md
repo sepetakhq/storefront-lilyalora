@@ -21,6 +21,11 @@ what the binary would serve.
 
 ## Ship
 
+`public/manifest.json` (title, description in `id` and `en`, preview file
+name) and `public/preview.jpg` are this template's catalogue entry: the
+backoffice picker and the landing read them from the registry beside
+`index.html`. `src/manifest.test.js` refuses a push without them.
+
 Every push to `main` builds and uploads to the template registry
 (`.github/workflows/release.yml`); the API serves the new build within a
 minute. To see the registry path locally, publish to the dev MinIO and open
