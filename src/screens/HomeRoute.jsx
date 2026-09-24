@@ -8,7 +8,7 @@ import { ErrorState, ProductGridSkeleton, Skeleton } from '../ui/states.jsx';
 import { useHome } from '@sepetakhq/storefront-kit/hooks/queries';
 import { qk } from '@sepetakhq/storefront-kit/api/queryKeys';
 import { useConfig } from '@sepetakhq/storefront-kit/config/ConfigProvider';
-import { fmt } from '@sepetakhq/storefront-kit/shared/format';
+import { campaignHeadline, heroCta, sectionText } from '../lib/copy.js';
 
 const wrap = { maxWidth: 1200, margin: '0 auto' };
 const h2 = { fontFamily: "'Cormorant Garamond',serif", fontSize: 34, fontWeight: 600, margin: 0 };
@@ -156,7 +156,7 @@ function Hero({ hero }) {
             boxShadow: '0 8px 20px rgba(210,110,142,0.3)',
           }}
         >
-          {hero.cta}
+          {heroCta(hero)}
         </Link>
 
         {stats.length ? (
@@ -375,7 +375,7 @@ function CampaignStrip({ campaign }) {
                   color: '#D26E8E',
                 }}
               >
-                {discountLabel(campaign)}
+                {campaignHeadline(campaign)}
               </span>
             </div>
             <h2 style={{ ...h2, margin: '6px 0 0' }}>{campaign.title}</h2>
@@ -399,18 +399,13 @@ function CampaignStrip({ campaign }) {
   );
 }
 
-function discountLabel(c) {
-  if (c.discount_type === 'percentage') return `Diskon ${c.discount_value}%`;
-  return `Potongan ${fmt(c.discount_value)}`;
-}
-
 function Categories({ cats }) {
   const { brand } = useConfig();
   if (!cats?.length) return null;
 
   return (
     <section style={{ ...wrap, padding: '52px 20px 10px' }}>
-      <h2 style={{ ...h2, margin: '0 0 20px' }}>{brand.sections.cats_heading}</h2>
+      <h2 style={{ ...h2, margin: '0 0 20px' }}>{sectionText(brand.sections, 'cats_heading')}</h2>
       <div
         style={{
           display: 'grid',
@@ -480,7 +475,7 @@ function Grid({ grid, priority }) {
       >
         <h2 style={h2}>{grid.title}</h2>
         <Link className="hv-pink" to="/katalog" style={{ fontWeight: 700, color: '#B4557A', fontSize: 14.5 }}>
-          {brand.sections.grid_see_all}
+          {sectionText(brand.sections, 'grid_see_all')}
         </Link>
       </div>
       <div className="product-grid">
@@ -568,7 +563,7 @@ function Story({ story }) {
             color: '#B49E6A',
           }}
         >
-          {brand.sections.story_eyebrow}
+          {sectionText(brand.sections, 'story_eyebrow')}
         </div>
         <h2
           style={{
@@ -605,7 +600,7 @@ function Story({ story }) {
             fontSize: 14.5,
           }}
         >
-          {brand.sections.story_cta}
+          {sectionText(brand.sections, 'story_cta')}
         </Link>
       </div>
     </section>

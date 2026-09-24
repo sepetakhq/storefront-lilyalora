@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 
 import { useConfig } from '@sepetakhq/storefront-kit/config/ConfigProvider';
 import { BrandMark } from './BrandMark.jsx';
+import { sectionText, whatsappText } from '../lib/copy.js';
 
 const colTitle = {
   fontWeight: 700,
@@ -50,7 +51,7 @@ export default function Footer() {
         </div>
 
         <div style={{ flex: '1 1 170px' }}>
-          <div style={colTitle}>Belanja</div>
+          <div style={colTitle}>{sectionText(brand.sections, 'footer_shop_heading')}</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 14.5 }}>
             {shopLinks.map((n) => (
               <Link key={n.path} className="hv-blush" to={n.path} style={{ color: '#E8DECF' }}>
@@ -61,7 +62,7 @@ export default function Footer() {
         </div>
 
         <div style={{ flex: '1 1 220px' }}>
-          <div style={colTitle}>Hubungi kami</div>
+          <div style={colTitle}>{sectionText(brand.sections, 'footer_contact_heading')}</div>
           <div style={{ fontSize: 14.5, lineHeight: 1.8, color: '#C9BBA8' }}>
             {brand.address_line1}
             <br />
@@ -75,7 +76,7 @@ export default function Footer() {
                   rel="noopener noreferrer"
                   style={{ color: '#F3B8C8' }}
                 >
-                  {brand.whatsapp_text}
+                  {whatsappText(brand)}
                 </a>
               </>
             ) : null}
@@ -89,7 +90,7 @@ export default function Footer() {
         </div>
 
         <div style={{ flex: '1 1 180px' }}>
-          <div style={colTitle}>Pembayaran</div>
+          <div style={colTitle}>{sectionText(brand.sections, 'footer_payment_heading')}</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {paymentMethods.map((p) => (
               <span

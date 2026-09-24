@@ -86,4 +86,18 @@ describe('About', () => {
 
     expect(screen.getByLabelText('Tentang Toko Lain')).toBeTruthy();
   });
+
+  it("draws the merchant's labels, the template's behind a blank one", () => {
+    withBrand({
+      aboutTitle: 'Toko Lain',
+      whatsapp_url: 'https://example.test/chat',
+      whatsapp_text: '  ',
+      sections: { story_eyebrow: 'Kisah kami', about_address_heading: '   ' },
+    });
+    render(<About />);
+
+    expect(screen.getByText('Kisah kami')).toBeTruthy();
+    expect(screen.getByText('Kunjungi kami')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Chat WhatsApp' })).toBeTruthy();
+  });
 });

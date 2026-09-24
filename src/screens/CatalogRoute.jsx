@@ -3,6 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 import ProductCard from '../components/ProductCard.jsx';
 import { EmptyState, ErrorState, InlineError, ProductGridSkeleton } from '../ui/states.jsx';
 import { useCategories, useProducts } from '@sepetakhq/storefront-kit/hooks/queries';
+import { useConfig } from '@sepetakhq/storefront-kit/config/ConfigProvider';
+import { navLabel, originLine } from '../lib/copy.js';
 
 const ALL = 'Semua';
 
@@ -19,6 +21,10 @@ export default function CatalogRoute() {
   // Filters live in the URL, not in state: a filtered catalogue is a link
   // worth sharing, and the back button should unwind a filter change.
   const [params, setParams] = useSearchParams();
+  const { brand } = useConfig();
+  // The heading is the merchant's name for this page in their nav.
+  const title = navLabel(brand.nav, '/katalog', 'Katalog');
+  const origin = originLine(brand);
   const cat = params.get('cat') || ALL;
   const sort = params.get('sort') || 'featured';
 
@@ -37,7 +43,7 @@ export default function CatalogRoute() {
 
   return (
     <main
-      aria-label="Katalog"
+      aria-label={title}
       style={{ flex: 1, maxWidth: 1200, margin: '0 auto', padding: '36px 20px 60px', width: '100%' }}
     >
       <h1
@@ -48,14 +54,14 @@ export default function CatalogRoute() {
           margin: '0 0 6px',
         }}
       >
-        Katalog
+        {title}
       </h1>
       <p style={{ color: '#8A7D70', margin: '0 0 24px' }}>
         {/* The API sends no total, so this counts what has actually loaded and
             says so rather than implying it is the whole catalogue. */}
         {products.isPending
           ? 'Memuat produk…'
-          : `Menampilkan ${items.length} produk · dikirim dari Pekalongan`}
+          : `Menampilkan ${items.length} produk${origin ? ` · ${origin}` : ''}`}
       </p>
 
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 24 }}>

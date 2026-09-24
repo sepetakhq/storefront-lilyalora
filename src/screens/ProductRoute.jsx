@@ -20,6 +20,7 @@ import {
 import { useConfig } from '@sepetakhq/storefront-kit/config/ConfigProvider';
 import { useToast } from '@sepetakhq/storefront-kit/ui/ToastProvider';
 import { fmt, fmtClock, paragraphs } from '@sepetakhq/storefront-kit/shared/format';
+import { sectionText } from '../lib/copy.js';
 
 const detailsRow = { borderBottom: '1px solid #F0E4CF', padding: '14px 4px' };
 const summary = { fontWeight: 700, cursor: 'pointer', fontSize: 14.5 };
@@ -427,7 +428,7 @@ function ProductView({ product, onOpen }) {
             <div style={{ borderTop: '1px solid #F0E4CF' }}>
               {spec.length > 0 ? (
                 <details style={detailsRow}>
-                  <summary style={summary}>{sections.product_details_heading || 'Detail bahan & ukuran'}</summary>
+                  <summary style={summary}>{sectionText(sections, 'product_details_heading')}</summary>
                   {spec.map((t, i) => (
                     <p key={i} style={detailsText}>
                       {t}
@@ -439,7 +440,7 @@ function ProductView({ product, onOpen }) {
                   never written care copy got a panel opening onto nothing. */}
               {care.length > 0 ? (
                 <details style={detailsRow}>
-                  <summary style={summary}>{sections.product_care_heading || 'Cara perawatan'}</summary>
+                  <summary style={summary}>{sectionText(sections, 'product_care_heading')}</summary>
                   {care.map((t, i) => (
                     <p key={i} style={detailsText}>
                       {t}
@@ -452,7 +453,7 @@ function ProductView({ product, onOpen }) {
                   that opens onto nothing is worse than no panel. */}
               {(brand.productShippingCopy || freeShipping || product.preorder) && (
                 <details style={{ padding: '14px 4px' }}>
-                  <summary style={summary}>{sections.product_shipping_heading || 'Pengiriman'}</summary>
+                  <summary style={summary}>{sectionText(sections, 'product_shipping_heading')}</summary>
                   {/* First, because it changes what every line below it means:
                       the courier only starts counting once the item exists. */}
                   {product.preorder && (
@@ -490,7 +491,7 @@ function ProductView({ product, onOpen }) {
               margin: '48px 0 18px',
             }}
           >
-            Kamu mungkin suka
+            {sectionText(sections, 'related_heading')}
           </h2>
           <div className="product-grid">
             {product.related.map((p) => (
