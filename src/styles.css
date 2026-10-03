@@ -44,6 +44,12 @@ input:focus, select:focus, textarea:focus { outline: 2px solid #F3B8C8; outline-
 }
 .hv-shadow:hover { box-shadow: 0 14px 30px rgba(67, 56, 46, 0.12); }
 
+/* --- payment and courier badges, as the server sends them --------------- */
+/* Beside the price in a checkout row: names stay aligned whether a row has one or not. */
+.la-choice-logo { display: block; height: 20px; width: auto; max-width: 64px; object-fit: contain; flex: none; }
+@media (max-width: 480px) { .la-choice-logo { height: 16px; max-width: 48px; } }
+.la-logo-chip img { display: block; height: 16px; width: auto; max-width: 76px; object-fit: contain; }
+
 /* --- loading shimmer -----------------------------------------------------
    Woven from the same cream-to-blush the photography sits on, so a loading
    grid reads as the storefront rather than as a generic skeleton screen. */
