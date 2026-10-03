@@ -92,19 +92,8 @@ export default function Footer() {
         <div style={{ flex: '1 1 180px' }}>
           <div style={colTitle}>{sectionText(brand.sections, 'footer_payment_heading')}</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {paymentMethods.map((p) => (
-              <span
-                key={p.code}
-                style={{
-                  background: '#5A4C3F',
-                  borderRadius: 8,
-                  padding: '6px 12px',
-                  fontSize: 12,
-                  fontWeight: 700,
-                }}
-              >
-                {p.name}
-              </span>
+            {chips(paymentMethods).map((p) => (
+              <Chip key={p.code} item={p} />
             ))}
           </div>
         </div>
@@ -122,5 +111,36 @@ export default function Footer() {
         {brand.copyright}
       </div>
     </footer>
+  );
+}
+
+/**
+ * One chip per badge: "VA BCA" and "Transfer BCA" are the same mark to a
+ * buyer checking whether the shop takes their bank. A name the platform has
+ * no badge for stays text.
+ */
+export function chips(items) {
+  const seen = new Set();
+  return items.filter((x) => !x.logo_url || (!seen.has(x.logo_url) && seen.add(x.logo_url)));
+}
+
+const chip = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  minHeight: 28,
+  background: '#5A4C3F',
+  borderRadius: 8,
+  padding: '6px 12px',
+  fontSize: 12,
+  fontWeight: 700,
+};
+
+function Chip({ item }) {
+  if (!item.logo_url) return <span style={chip}>{item.name}</span>;
+  // A badge sits on the page's own cream: a full-colour mark is unreadable on the brown.
+  return (
+    <span className="la-logo-chip" style={{ ...chip, background: '#FFFDF7' }} title={item.name}>
+      <img src={item.logo_url} alt={item.name} loading="lazy" />
+    </span>
   );
 }

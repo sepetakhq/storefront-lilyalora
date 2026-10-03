@@ -506,14 +506,9 @@ function Checkout({ onPlaced }) {
             ) : (
               <div style={{ display: 'grid', gap: 10 }}>
                 {couriers.map((c) => (
-                  <OptionTile key={c.code} selected={courier === c.code} onClick={() => setCourier(c.code)}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                      <span>
-                        <strong>{c.name}</strong>
-                        <span style={{ color: '#8A7D70', fontSize: 13 }}> · {c.eta}</span>
-                      </span>
-                      <strong>{fmt(c.cost)}</strong>
-                    </div>
+                  <OptionTile key={c.code} selected={courier === c.code} onClick={() => setCourier(c.code)} logo={c.logo_url} aside={<strong>{fmt(c.cost)}</strong>}>
+                    <strong>{c.name}</strong>
+                    <span style={{ color: '#8A7D70', fontSize: 13 }}> · {c.eta}</span>
                   </OptionTile>
                 ))}
               </div>
@@ -537,6 +532,7 @@ function Checkout({ onPlaced }) {
                     selected={method === p.code}
                     disabled={!fits}
                     onClick={() => fits && setMethod(p.code)}
+                    logo={p.logo_url}
                   >
                     <strong>{p.name}</strong>
                     <div style={{ color: '#8A7D70', fontSize: 13 }}>
@@ -913,7 +909,7 @@ function Review({
   );
 }
 
-function OptionTile({ selected, onClick, disabled, children }) {
+function OptionTile({ selected, onClick, disabled, aside, logo, children }) {
   return (
     <button
       type="button"
@@ -934,7 +930,14 @@ function OptionTile({ selected, onClick, disabled, children }) {
         cursor: disabled ? 'not-allowed' : 'pointer',
       }}
     >
-      {children}
+      <span style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <span style={{ flex: 1, minWidth: 0 }}>{children}</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 14, flex: 'none' }}>
+          {/* Decorative: the name beside it already says what it is. */}
+          {logo ? <img className="la-choice-logo" src={logo} alt="" /> : null}
+          {aside}
+        </span>
+      </span>
     </button>
   );
 }
