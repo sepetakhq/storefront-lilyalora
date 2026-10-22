@@ -32,4 +32,30 @@ describe('Footer', () => {
     expect(screen.queryByRole('img', { name: 'Transfer BCA' })).toBeNull();
     expect(screen.getByText('Transfer SeaBank')).toBeTruthy();
   });
+
+  // The platform's mark rides the plan. An older API version strips the
+  // field, and then nothing is drawn.
+  it('shows the Sepetak badge only when the shop carries it', () => {
+    const setup = (tenant) => {
+      Object.assign(config, {
+        tenant,
+        paymentMethods: [{ code: 'QRIS', name: 'QRIS', enabled: true }],
+        couriers: [],
+        brand: { nav: [], wordmark_primary: 'Toko', copyright: '© Toko', sections: {} },
+      });
+      return render(
+        <MemoryRouter>
+          <Footer />
+        </MemoryRouter>,
+      );
+    };
+    setup({});
+    expect(screen.getByText('© Toko')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Dibuat dengan Sepetak' })).toBeNull();
+    cleanup();
+    setup({ sepetak_badge: true });
+    const a = screen.getByRole('link', { name: 'Dibuat dengan Sepetak' });
+    expect(a.getAttribute('href')).toBe('https://sepetak.com/?ref=toko');
+    expect(a.getAttribute('target')).toBe('_blank');
+  });
 });

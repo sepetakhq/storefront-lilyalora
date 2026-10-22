@@ -14,7 +14,10 @@ const colTitle = {
 };
 
 export default function Footer() {
-  const { brand, paymentMethods } = useConfig();
+  const { brand, paymentMethods, tenant } = useConfig();
+  // The platform's mark, on the plans that carry it. Absent on an older API
+  // version, which strips the field, so nothing is drawn.
+  const badge = tenant?.sepetak_badge === true;
 
   // The nav the header shows, minus Beranda — the wordmark already goes there.
   const shopLinks = brand.nav.filter((n) => n.path !== '/');
@@ -102,13 +105,22 @@ export default function Footer() {
       <div
         style={{
           borderTop: '1px solid #5A4C3F',
+          display: 'flex',
+          flexWrap: 'wrap',
+          justifyContent: 'center',
+          gap: '4px 16px',
           textAlign: 'center',
           padding: '16px 20px',
           fontSize: 12.5,
           color: '#8A7D70',
         }}
       >
-        {brand.copyright}
+        {brand.copyright && <span>{brand.copyright}</span>}
+        {badge && (
+          <a href="https://sepetak.com/?ref=toko" target="_blank" rel="noopener" style={{ fontSize: 12, color: '#8A7D70', whiteSpace: 'nowrap' }}>
+            Dibuat dengan Sepetak
+          </a>
+        )}
       </div>
     </footer>
   );
