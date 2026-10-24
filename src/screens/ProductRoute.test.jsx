@@ -306,3 +306,32 @@ describe('ProductRoute variant picker', () => {
     expect(cartCalls[0][2]).toBeNull();
   });
 });
+
+// A product sold by weight counts grams: the stepper starts at qty_min, moves
+// by qty_step, and the price reads per kg. Pieces stay a bare number.
+describe('ProductRoute sale units', () => {
+  afterEach(() => {
+    cartCalls.length = 0;
+  });
+
+  it('prices per kg and steps the weight from its minimum', () => {
+    withProduct({ unit: 'kg', qty_step: 100, qty_min: 500, stock: 5000 });
+    panel();
+    expect(screen.getByText('/kg')).toBeTruthy();
+    expect(screen.getByText('0,5 kg')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Kurangi jumlah' }).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Tambah jumlah' }));
+    expect(screen.getByText('0,6 kg')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Tambah ke Keranjang' }));
+    expect(cartCalls[0][1]).toBe(600);
+  });
+
+  it('keeps pieces as before', () => {
+    withProduct({ stock: 2 });
+    panel();
+    expect(screen.queryByText(/^\/(pcs|kg)$/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Tambah jumlah' }));
+    expect(screen.getByText('2')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Tambah jumlah' }).disabled).toBe(true);
+  });
+});

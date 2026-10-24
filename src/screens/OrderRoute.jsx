@@ -9,7 +9,7 @@ import { EmptyState, ErrorState, Skeleton } from '../ui/states.jsx';
 import { useOrder } from '@sepetakhq/storefront-kit/hooks/queries';
 import { useConfig } from '@sepetakhq/storefront-kit/config/ConfigProvider';
 import { serverNow } from '@sepetakhq/storefront-kit/api/client';
-import { fmt, fmtDate, fmtDateTime } from '@sepetakhq/storefront-kit/shared/format';
+import { fmt, fmtDate, fmtDateTime, formatQty } from '@sepetakhq/storefront-kit/shared/format';
 import { claimPayment, reopenPayment } from '@sepetakhq/storefront-kit/api/endpoints';
 import { qk } from '@sepetakhq/storefront-kit/api/queryKeys';
 import {
@@ -176,7 +176,7 @@ export default function OrderRoute() {
                   <div style={{ color: '#43382E', fontSize: 13 }}>{l.variant_label}</div>
                 ) : null}
                 <div style={{ color: '#8A7D70', fontSize: 13 }}>
-                  {fmt(l.unit_price)} × {l.qty}
+                  {fmt(l.unit_price)} × {formatQty(l.qty, l.unit)}
                 </div>
               </div>
               <strong style={{ fontSize: 14 }}>{fmt(l.line_total)}</strong>
