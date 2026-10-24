@@ -7,6 +7,7 @@ import { EmptyState, ErrorState, Skeleton } from '../ui/states.jsx';
 import { useProduct } from '@sepetakhq/storefront-kit/hooks/queries';
 import { useCart } from '@sepetakhq/storefront-kit/cart/CartProvider';
 import { isSoldOut, leadDays, maxQty, stockNote } from '@sepetakhq/storefront-kit/lib/preorder';
+import { isScaled, qtyLimits, stepQty } from '@sepetakhq/storefront-kit/shared/qty';
 import { buyLabel, isImminent, isScheduled, msUntilOpen, windowNote } from '@sepetakhq/storefront-kit/lib/availability';
 import {
   availableValues,
@@ -19,7 +20,7 @@ import {
 } from '@sepetakhq/storefront-kit/lib/variants';
 import { useConfig } from '@sepetakhq/storefront-kit/config/ConfigProvider';
 import { useToast } from '@sepetakhq/storefront-kit/ui/ToastProvider';
-import { fmt, fmtClock, paragraphs } from '@sepetakhq/storefront-kit/shared/format';
+import { fmt, fmtClock, formatQty, paragraphs } from '@sepetakhq/storefront-kit/shared/format';
 import { sectionText } from '../lib/copy.js';
 
 const detailsRow = { borderBottom: '1px solid #F0E4CF', padding: '14px 4px' };
@@ -102,7 +103,8 @@ function ProductView({ product, onOpen }) {
   const navigate = useNavigate();
 
   const [active, setActive] = useState(0);
-  const [qty, setQty] = useState(1);
+  const limits = qtyLimits(product);
+  const [qty, setQty] = useState(limits.min);
   const [broken, setBroken] = useState(() => new Set());
 
   // Which value is picked on each axis. Nothing is guessed beyond what
@@ -120,7 +122,7 @@ function ProductView({ product, onOpen }) {
     // A pick can change the photo and the stock ceiling, so the gallery and
     // the quantity restart from the top.
     setActive(0);
-    setQty(1);
+    setQty(limits.min);
   };
 
   // The panel's three sections, resolved and then substituted, before anything
@@ -284,6 +286,7 @@ function ProductView({ product, onOpen }) {
               ) : (
                 fmt(sellable.price)
               )}
+              {isScaled(limits.unit) ? <span style={{ fontSize: 15, fontWeight: 600, color: '#B7AA9A' }}>/{limits.unit}</span> : null}
             </span>
             {sellable.on_sale ? (
               <>
@@ -357,21 +360,21 @@ function ProductView({ product, onOpen }) {
               <button
                 type="button"
                 className="hv-cream"
-                onClick={() => setQty((q) => Math.max(1, q - 1))}
-                disabled={disabled || qty <= 1}
+                onClick={() => setQty((q) => Math.max(limits.min, stepQty(q, -1, limits)))}
+                disabled={disabled || qty <= limits.min}
                 aria-label="Kurangi jumlah"
                 style={stepper}
               >
                 −
               </button>
               <span style={{ minWidth: 40, textAlign: 'center', fontWeight: 700, fontSize: 16 }}>
-                {qty}
+                {formatQty(qty, limits.unit)}
               </span>
               <button
                 type="button"
                 className="hv-cream"
-                onClick={() => setQty((q) => Math.min(max, q + 1))}
-                disabled={disabled || qty >= max}
+                onClick={() => setQty((q) => Math.min(max, stepQty(q, 1, limits)))}
+                disabled={disabled || stepQty(qty, 1, limits) > max}
                 aria-label="Tambah jumlah"
                 style={stepper}
               >

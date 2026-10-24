@@ -10,7 +10,7 @@ import { deviceRows, tokensOf } from '@sepetakhq/storefront-kit/lib/deviceOrders
 import { useOrdersByToken } from '@sepetakhq/storefront-kit/hooks/queries';
 import { recordRetryAfter, recordSend, cooldown } from '@sepetakhq/storefront-kit/checkout/otpCooldown';
 import { CountdownWords } from '../ui/Countdown.jsx';
-import { fmt, fmtDateTime } from '@sepetakhq/storefront-kit/shared/format';
+import { fmt, fmtDateTime, formatQty } from '@sepetakhq/storefront-kit/shared/format';
 
 const card = { background: '#fff', border: '1px solid #F0E4CF', borderRadius: 22, padding: 22 };
 const field = {
@@ -293,7 +293,7 @@ function LookupResults({ orders }) {
             <span style={{ fontSize: 13, color: '#8A7D70' }}>{o.status_label}</span>
           </div>
           <div style={{ fontSize: 13, color: '#8A7D70', marginTop: 4 }}>
-            {fmtDateTime(o.placed_at)} · {o.lines.map((l) => `${l.name}${l.variant_label ? ` (${l.variant_label})` : ''} ×${l.qty}`).join(', ')}
+            {fmtDateTime(o.placed_at)} · {o.lines.map((l) => `${l.name}${l.variant_label ? ` (${l.variant_label})` : ''} ×${formatQty(l.qty, l.unit)}`).join(', ')}
           </div>
           <div style={{ marginTop: 8, fontWeight: 700 }}>{fmt(o.total)}</div>
           {o.awb ? (
