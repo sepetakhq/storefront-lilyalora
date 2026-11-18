@@ -1,11 +1,21 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
-import { getShippingRates } from '@sepetakhq/storefront-kit/api/endpoints';
+import { getMapPlace, getShippingRates } from '@sepetakhq/storefront-kit/api/endpoints';
 import { qk } from '@sepetakhq/storefront-kit/api/queryKeys';
 import { useConfig } from '@sepetakhq/storefront-kit/config/ConfigProvider';
 import { fmt } from '@sepetakhq/storefront-kit/shared/format';
-import { defaultOption, destinationLines, isStillOffered, splitEtd, weightInKg } from '@sepetakhq/storefront-kit/lib/shipping';
+import {
+  defaultGroup,
+  defaultOption,
+  destinationLines,
+  groupRates,
+  isStillOffered,
+  splitEtd,
+  weightInKg,
+} from '@sepetakhq/storefront-kit/lib/shipping';
+import MapPicker from '@sepetakhq/storefront-kit/map/MapPicker';
+import { useBuyerPoint } from '@sepetakhq/storefront-kit/hooks/useBuyerPoint';
 
 // The live rate list.
 //
@@ -19,20 +29,27 @@ const rule = { border: 0, borderTop: '1px solid #F0E4CF', margin: '14px 0' };
 const serif = { fontFamily: "'Cormorant Garamond', serif" };
 
 export default function ShippingRates({ destination, items, selected, onSelect, onRetry }) {
-  const { brand, freeShippingMin } = useConfig();
+  const { brand, freeShippingMin, instantShipping } = useConfig();
+  // GoSend/Grab are priced from a pin the buyer drops on the map.
+  const loc = useBuyerPoint(destination?.ref ?? '');
+  const [open, setOpen] = useState(null);
+  const [mapOpen, setMapOpen] = useState(false);
+  // Set when a pin is confirmed: select Instan's cheapest once it is priced.
+  const [wantInstant, setWantInstant] = useState(false);
 
   // Keyed on the destination and the cart together. Both change the answer,
   // and serving a stale list would show a price the draft step then refuses.
   const cartKey = items.map((i) => `${i.product_id}:${i.variant_id ?? ''}:${i.qty}`).sort().join('|');
 
   const rates = useQuery({
-    queryKey: qk.rates(destination?.ref ?? '', cartKey),
+    queryKey: qk.rates(destination?.ref ?? '', cartKey, loc.point),
     queryFn: ({ signal }) =>
       getShippingRates(
         {
           destination_ref: destination.ref,
           destination_label: destination.label,
           items,
+          destination_point: loc.point ?? undefined,
         },
         signal,
       ),
@@ -44,16 +61,51 @@ export default function ShippingRates({ destination, items, selected, onSelect, 
     retry: false,
   });
 
-  const options = rates.data?.options ?? [];
+  // Where the picked kecamatan is: the map opens there. Free to be missing.
+  const place = useQuery({
+    queryKey: qk.mapPlace(destination?.ref ?? ''),
+    queryFn: ({ signal }) => getMapPlace(destination.ref, signal),
+    enabled: Boolean(destination?.ref) && instantShipping && mapOpen,
+    staleTime: Infinity,
+    retry: false,
+  });
 
-  // Land on the cheapest once the list arrives, and re-pick when a choice
-  // stops being offered — a quote from the previous cart would be refused at
-  // the draft step, and finding that out one screen later is the worst place.
+  const options = rates.data?.options ?? [];
+  const groups = groupRates(options);
+  // A shop selling only GoSend/Grab answers "share your location" until the
+  // buyer drops a pin: the Instan row is then the whole answer.
+  const needsPoint = rates.isError && rates.error?.code === 'location_needed';
+  const instantRow = instantShipping && !groups.some((g) => g.key === 'instant');
+  const shown = instantRow ? [{ key: 'instant', label: 'Instan', eta: '1–3 jam', options: [], from: null }, ...groups] : groups;
+
+  // Land on the cheapest of the type in view, and re-pick when a choice stops
+  // being offered -- a quote from the previous cart would be refused at the
+  // draft step, and finding that out one screen later is the worst place.
   useEffect(() => {
     if (options.length === 0) return;
+    const key = open && groups.some((g) => g.key === open) ? open : defaultGroup(groups, selected);
+    if (key !== open) setOpen(key);
+    const instant = groups.find((g) => g.key === 'instant');
+    if (wantInstant && instant) {
+      setWantInstant(false);
+      setOpen('instant');
+      if (!instant.options.some((o) => o.quote_id === selected)) onSelect(defaultOption(instant.options));
+      return;
+    }
     if (isStillOffered(options, selected)) return;
-    onSelect(defaultOption(options));
-  }, [options, selected, onSelect]);
+    const group = groups.find((g) => g.key === key);
+    onSelect(defaultOption(group?.options ?? options));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [options, selected]);
+
+  const pick = (g) => {
+    if (g.key === 'instant' && !loc.point) {
+      setMapOpen(true);
+      return;
+    }
+    setOpen(g.key);
+    if (g.options.length > 0 && !g.options.some((o) => o.quote_id === selected)) onSelect(defaultOption(g.options));
+  };
 
   if (!destination) {
     return (
@@ -87,20 +139,27 @@ export default function ShippingRates({ destination, items, selected, onSelect, 
 
       {rates.isPending ? (
         <RateSkeleton />
-      ) : rates.isError ? (
+      ) : rates.isError && !needsPoint ? (
         <RateProblem error={rates.error} onRetry={() => rates.refetch()} onEdit={onRetry} />
-      ) : options.length === 0 ? (
+      ) : shown.length === 0 ? (
         <RateProblem error={null} onRetry={() => rates.refetch()} onEdit={onRetry} />
       ) : (
         <div style={{ display: 'grid', gap: 10 }}>
-          {options.map((o) => (
-            <RateTile
-              key={o.quote_id}
-              option={o}
-              free={free}
-              selected={selected === o.quote_id}
-              onClick={() => onSelect(o)}
-            />
+          {shown.map((g) => (
+            <div key={g.key} style={{ display: 'grid', gap: 8 }}>
+              <GroupRow group={g} free={free} open={open === g.key} needsPin={g.key === 'instant' && !loc.point}
+                unavailable={g.key === 'instant' && Boolean(loc.point) && g.options.length === 0 && rates.isSuccess} onClick={() => pick(g)} />
+              {open === g.key ? (
+                <div style={{ display: 'grid', gap: 8, paddingLeft: 10 }}>
+                  {g.options.map((o) => (
+                    <RateTile key={o.quote_id} option={o} free={free} selected={selected === o.quote_id} onClick={() => onSelect(o)} />
+                  ))}
+                  {g.key === 'instant' && loc.point ? (
+                    <PinLine none={g.options.length === 0 && rates.isSuccess} onEdit={() => setMapOpen(true)} />
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
           ))}
           {free ? (
             <p style={{ fontSize: 12.5, color: '#8A7D70', margin: '2px 0 0' }}>
@@ -110,6 +169,145 @@ export default function ShippingRates({ destination, items, selected, onSelect, 
           ) : null}
         </div>
       )}
+
+      {mapOpen ? (
+        <MapSheet
+          center={loc.point ?? place.data ?? null}
+          near={place.data ?? null}
+          onCancel={() => setMapOpen(false)}
+          onConfirm={(p) => {
+            loc.set(p);
+            setMapOpen(false);
+            setOpen('instant');
+            setWantInstant(true);
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * One delivery type: what the buyer chooses first, the courier second.
+ * "mulai Rp X" is the cheapest inside it; Instan before a pin asks for one.
+ */
+export function GroupRow({ group, free, open, needsPin, unavailable, onClick }) {
+  return (
+    <button
+      type="button"
+      className="hv-card"
+      aria-expanded={Boolean(open)}
+      onClick={onClick}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        width: '100%',
+        minHeight: 52,
+        textAlign: 'left',
+        border: `1px solid ${open ? '#D26E8E' : '#F0E4CF'}`,
+        borderRadius: 16,
+        padding: '12px 16px',
+        background: open ? '#FDF0F4' : '#fff',
+        cursor: 'pointer',
+      }}
+    >
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ display: 'block', fontSize: 15, fontWeight: 700, color: '#43382E' }}>{group.label}</span>
+        {group.eta || needsPin ? (
+          <span style={{ display: 'block', fontSize: 12.5, color: '#8A7D70' }}>
+            {needsPin ? 'Pilih titik di peta untuk lihat ongkir' : group.eta}
+          </span>
+        ) : null}
+      </span>
+      <span style={{ fontSize: 13.5, color: '#43382E', fontWeight: 700, whiteSpace: 'nowrap' }}>
+        {needsPin ? 'Pilih titik' : unavailable ? 'Tidak tersedia' : free ? 'Gratis' : group.from != null ? `mulai ${fmt(group.from)}` : ''}
+      </span>
+      <span aria-hidden="true" style={{ color: '#D26E8E' }}>{open ? '▴' : '▾'}</span>
+    </button>
+  );
+}
+
+const linkStyle = {
+  color: '#D26E8E',
+  fontWeight: 700,
+  textDecoration: 'underline',
+  background: 'none',
+  border: 0,
+  padding: '0 4px',
+  cursor: 'pointer',
+  fontSize: 13,
+  display: 'inline-flex',
+  alignItems: 'center',
+  minHeight: 44,
+};
+
+/** Under the Instan couriers: where they were priced to, and the way to move it. */
+export function PinLine({ none, onEdit }) {
+  return (
+    <div style={{ fontSize: 13, color: '#8A7D70', display: 'grid', gap: 4 }}>
+      {none ? <span style={{ color: '#43382E' }}>GoSend/Grab tidak tersedia untuk titik ini.</span> : null}
+      <span>
+        Dihitung ke titik yang kamu pilih di peta ·{' '}
+        <button type="button" onClick={onEdit} style={linkStyle}>
+          Ubah titik
+        </button>
+      </span>
+    </div>
+  );
+}
+
+const pill = {
+  borderRadius: 999,
+  padding: '9px 18px',
+  fontSize: 13.5,
+  fontWeight: 700,
+  cursor: 'pointer',
+  border: '1px solid #D26E8E',
+};
+const mapButtons = {
+  confirm: { ...pill, background: '#D26E8E', color: '#fff' },
+  secondary: { ...pill, background: '#fff', color: '#D26E8E' },
+};
+
+/** The map, in this template's own sheet. */
+export function MapSheet({ center, near, onConfirm, onCancel }) {
+  useEffect(() => {
+    const onKey = (e) => e.key === 'Escape' && onCancel();
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onCancel]);
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(67,56,46,0.45)',
+        display: 'grid',
+        placeItems: 'center',
+        padding: 12,
+        zIndex: 1000,
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Pilih titik pengiriman"
+        className="la-map-sheet"
+        style={{
+          background: '#FFFDF7',
+          borderRadius: 24,
+          padding: '20px 18px 16px',
+          width: 'min(560px,100%)',
+          maxHeight: '100%',
+          overflow: 'auto',
+          boxShadow: '0 24px 60px rgba(67,56,46,0.28)',
+          color: '#43382E',
+        }}
+      >
+        <h2 style={{ ...serif, fontSize: 24, fontWeight: 600, margin: '0 0 10px' }}>Titik pengiriman</h2>
+        <MapPicker center={center} near={near} onConfirm={onConfirm} onCancel={onCancel} buttons={mapButtons} />
+      </div>
     </div>
   );
 }
